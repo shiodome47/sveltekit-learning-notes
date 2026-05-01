@@ -11,5 +11,9 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# adapter-netlify emits Functions v2 into .netlify/functions-internal/
-# which Netlify auto-detects relative to the base directory.
+# adapter-netlify v6 emits the SSR catch-all function (Functions v2 with
+# `path: ["/*"]`) into .netlify/functions-internal/. Netlify usually
+# auto-detects this, but in monorepos the auto-detection sometimes
+# misses it. We point to it explicitly as a safety net.
+[functions]
+  directory = ".netlify/functions-internal"
