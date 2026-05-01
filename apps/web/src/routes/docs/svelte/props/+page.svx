@@ -1,0 +1,153 @@
+---
+title: props は「親から子へ渡す荷物」
+name: props：親から子へ渡す荷物
+description: props は、親コンポーネントから子コンポーネントに渡す「荷物」。同じ部品を、中身だけ変えて何度でも使い回せるようになります。
+category: Svelte 実践基本
+order: 40
+---
+
+`props` は、ひとことで言うと
+
+> **「親コンポーネントから子コンポーネントへ渡す荷物」**
+
+です。
+
+## たとえ話：おつかいを頼む
+
+お母さんが、子どもに「**おつかいリスト**」を持たせて買い物に行かせるとします。
+お子さんは、リストを見ながらお店で品物を選びますよね。
+
+`props` はちょうどこの「**おつかいリスト**」です。
+**親（呼び出す側）**が、**子（呼び出される部品）**に「これを使ってね」と荷物を渡す仕組みです。
+
+## いちばん小さな例：あいさつする部品
+
+子コンポーネント `Hello.svelte` を作って、親から名前を受け取ります。
+
+```svelte
+<!-- Hello.svelte -->
+<script lang="ts">
+	let { name } = $props();
+</script>
+
+<p>こんにちは、{name} さん</p>
+```
+
+```svelte
+<!-- App.svelte -->
+<script lang="ts">
+	import Hello from './Hello.svelte';
+</script>
+
+<Hello name="たろう" />
+<Hello name="はなこ" />
+```
+
+### これは何をしているか
+
+- `let { name } = $props()` … 「親から `name` という荷物を受け取る」
+- `<Hello name="たろう" />` … 「`Hello` 部品に `name="たろう"` を渡す」
+- 同じ `Hello` を 2 個並べて、**中身（名前）だけ違う**表示ができる
+
+部品は1つしか書いていないのに、たろう用とはなこ用で**ちがう画面**が出ます。
+
+## 複数の荷物を渡す
+
+`props` は、**いくつでも**渡せます。
+
+```svelte
+<!-- Card.svelte -->
+<script lang="ts">
+	let { title, body } = $props();
+</script>
+
+<article>
+	<h2>{title}</h2>
+	<p>{body}</p>
+</article>
+```
+
+```svelte
+<Card title="お知らせ1" body="あしたは雨です" />
+<Card title="お知らせ2" body="今日は晴れです" />
+```
+
+### これは何をしているか
+
+- `{ title, body }` … 渡された荷物のうち、必要なものを名前で取り出す
+- 親側は属性のように `title="..."` `body="..."` で渡す
+
+## TypeScript で「荷物の中身」を決める
+
+型を付けると、**間違った荷物**を渡したときにすぐ気づけます。
+
+```svelte
+<!-- TodoItem.svelte -->
+<script lang="ts">
+	type Props = {
+		text: string;
+		done: boolean;
+	};
+
+	let { text, done }: Props = $props();
+</script>
+
+<li>
+	<input type="checkbox" checked={done} disabled />
+	<span>{text}</span>
+</li>
+```
+
+### これは何をしているか
+
+- `type Props = { text: string; done: boolean }` … **荷物の型**
+- `: Props` … 「`$props()` が返すのは `Props` 型」と宣言
+- 親側で `<TodoItem text="宿題" done={false} />` のように使う
+- もし `done="false"`（文字）にすると**エラー**で教えてくれる
+
+## 実務でよく使う場面
+
+`props` は、**部品化（コンポーネント化）**の基本です。
+
+- **Button** … `label`, `variant`, `disabled` を受け取る共通ボタン
+- **Card** … `title`, `body`, `image` を受け取るお知らせカード
+- **Header** … `siteName`, `links` を受け取る共通ヘッダー
+- **TodoItem** … `text`, `done`, `onToggle` を受け取るタスク行
+- **NoticeRow** … `date`, `title`, `tag` を受け取るお知らせ一覧行
+
+> 部品にして `props` で中身を変えるだけで、**同じ見た目を10個でも100個でも**作れます。
+
+## 規定値（デフォルト値）も渡せる
+
+「渡し忘れたとき用」の初期値を書けます。
+
+```svelte
+<script lang="ts">
+	let { label = '送信' } = $props();
+</script>
+
+<button>{label}</button>
+```
+
+### これは何をしているか
+
+- `label = '送信'` … 親が `label` を渡さなかったら `'送信'` になる
+- `<MyButton />` だけでも動く
+
+## 今日のまとめ
+
+- `props` は「**親 → 子へ渡す荷物**」
+- Svelte 5 では `let { name } = $props()` で受け取る
+- 型を付けると、間違った荷物を渡したときに気づける
+- **同じ部品を、中身だけ変えて使い回せる**
+
+## 今はここだけでOK
+
+子コンポーネントの先頭で `let { 受け取りたい名前 } = $props()`。
+親側で `<Child 名前="..." />` で渡す。これだけ。
+
+## 次に作る小さな練習
+
+- `Hello.svelte` を作って、`<Hello name="あなたの名前" />` で表示してみる
+- `Card.svelte`（`title`, `body`）を作って、`<Card>` を 3 つ並べてお知らせ一覧にしてみる
+- `TodoItem.svelte` に `text` と `done` の型を付けて、TypeScript で守ってみる

@@ -1,0 +1,159 @@
+---
+title: Svelte / SvelteKit チートシート
+name: チートシート
+description: 「あれ何だっけ？」と思ったときに戻ってくる地図。最初から順番に読むページではなく、やりたいことから記事を逆引きするための索引です。
+order: 30
+category: はじめに
+---
+
+## ひとことで言うと
+
+このページは、最初から読むページではなく、
+
+> **「あれ何だっけ？」と思ったときに戻ってくる地図**
+
+です。
+今までに作ったすべての章への**逆引きリファレンス**として使ってください。
+
+## まず迷ったらここ
+
+| こんなとき | 行く先 |
+| --- | --- |
+| プロジェクトを作りたい | [プロジェクトを作る](/docs/intro/setup) |
+| どこにコードを書くかわからない | [最初はどこに書く？](/docs/intro/where-to-write) |
+| Svelte と SvelteKit の違いがわからない | [Svelte と SvelteKit](/docs/intro/svelte-vs-sveltekit) |
+| 最初の画面を作りたい | [`+page.svelte`](/docs/sveltekit/page) |
+| 変わる値を作りたい | [`$state`](/docs/svelte/state) |
+| 何か作ってみたい | [Todo アプリ](/docs/examples/todo)・[お知らせ一覧](/docs/examples/notice-board) |
+
+## Svelte 基本の逆引き
+
+| やりたいこと | 使うもの | 章 |
+| --- | --- | --- |
+| 数字や文字を**変わる箱**にしたい | `$state` | [$state：変わる値](/docs/svelte/state) |
+| もとの値から**自動で計算**したい | `$derived` | [$derived：自動で計算](/docs/svelte/derived) |
+| 値の**変化に反応**して何かしたい | `$effect` | [$effect：変化に反応](/docs/svelte/effect) |
+| 親から子へ**値を渡したい** | `props` | [props：親から子へ渡す荷物](/docs/svelte/props) |
+| 入力欄と値を**ひもでつなぎたい** | `bind:value` / `bind:checked` | [bind：画面とデータをつなぐ](/docs/svelte/bind) |
+| **条件で出し分けたい** | `{#if}` / `{:else}` | [`{#if}`：条件で表示する](/docs/svelte/if) |
+| **リストを並べたい** | `{#each}` ＋ `(key)` | [`{#each}`：リストを並べる](/docs/svelte/each) |
+| **状態に応じて見た目を変えたい** | `class:xxx` / `style:xxx` | [class / style：見た目を変える](/docs/svelte/class-style) |
+
+## SvelteKit 基本の逆引き
+
+| やりたいこと | 使うもの | 章 |
+| --- | --- | --- |
+| **ページを作りたい** | `+page.svelte` | [+page.svelte：ページ本体](/docs/sveltekit/page) |
+| **共通レイアウト**を作りたい | `+layout.svelte` | [+layout.svelte：共通の額縁](/docs/sveltekit/layout) |
+| **URL の一部**を受け取りたい | `[slug]` | [`[slug]`：動的ルート](/docs/sveltekit/dynamic-routes) |
+| 表示前に**データを準備**したい | `load` | [load：表示前の材料集め](/docs/sveltekit/load) |
+| **サーバー側**で処理を書きたい | `+page.server.ts` | [+page.server.ts：サーバー側](/docs/sveltekit/page-server) |
+| **フォーム送信**を受け付けたい | `actions` | [form actions：フォームの受付](/docs/sveltekit/form-actions) |
+| **API（JSON）** を作りたい | `+server.ts` | [+server.ts：APIを作る](/docs/sveltekit/api-routes) |
+| **見つからないページ**を止めたい | `error(404, ...)` | [error / redirect](/docs/sveltekit/error-redirect) |
+| **ログインページへ飛ばしたい** | `redirect(303, '/login')` | [error / redirect](/docs/sveltekit/error-redirect) |
+| **入力ミスを戻したい**（フォーム） | `fail(422, {...})` | [error / redirect](/docs/sveltekit/error-redirect) |
+| **入口でログイン確認**したい | `hooks.server.ts` ＋ `locals.user` | [hooks：入口の受付係](/docs/sveltekit/hooks) |
+
+## TypeScript の逆引き
+
+| やりたいこと | 使うもの | 章 |
+| --- | --- | --- |
+| 値に「**これは何ですよ**」の**名札**を付けたい | `: string` / `: number` / `: boolean` | [型は「名札」](/docs/typescript/types) |
+| 親から子へ渡す荷物に型を付けたい | `type Props = {...}` ＋ `$props<Props>()` | [型は「名札」](/docs/typescript/types) |
+| 「これかこれかこれ」のどれか | union 型（`'a' \| 'b' \| 'c'`） | [4状態UI](/docs/patterns/loading-error) でも実例 |
+
+## 実務パターンの逆引き
+
+| こんな画面・機能を作りたい | 章 |
+| --- | --- |
+| **読み込み中／エラー／空／データ**の出し分け | [loading / error：4状態UI](/docs/patterns/loading-error) |
+| 今いるページの**メニューに下線**を付けたい | [現在地メニューに下線](/docs/patterns/active-nav) |
+| **ダークモード**を作りたい | [ダークモード](/docs/patterns/dark-mode) |
+| **検索欄で一覧を絞りこみたい** | [検索リスト](/docs/examples/search-list) |
+| **お知らせ一覧**＋**詳細ページ**を作りたい | [お知らせ一覧](/docs/examples/notice-board) |
+| **管理画面**（権限つきCRUD）を作りたい | [お知らせ管理画面](/docs/examples/admin-board) |
+
+## 保存場所で選ぶ
+
+| 保存したい範囲 | 使うもの | 章 |
+| --- | --- | --- |
+| **その場（タブの中）**だけでいい | [`$state`](/docs/svelte/state) | [Todo アプリ](/docs/examples/todo) |
+| **同じブラウザに残したい** | `$effect` ＋ `localStorage` | [Todo localStorage版](/docs/examples/todo-localstorage)・[ダークモード](/docs/patterns/dark-mode) |
+| **サーバーに保存したい**（フォーム経由） | [`form actions`](/docs/sveltekit/form-actions) ＋ [`+page.server.ts`](/docs/sveltekit/page-server) | [Todo server版](/docs/examples/todo-server)・[お知らせ管理画面](/docs/examples/admin-board) |
+| **API として保存したい**（fetch / 外部から） | [`+server.ts`](/docs/sveltekit/api-routes) | [+server.ts：APIを作る](/docs/sveltekit/api-routes) |
+| **DB に保存したい** | `$lib/server/...ts` の中身を SQL に置きかえ | [+page.server.ts](/docs/sveltekit/page-server)・[お知らせ管理画面](/docs/examples/admin-board) |
+
+## フォーム・API・エラーの使い分け
+
+| やりたいこと | 道具 | 章 |
+| --- | --- | --- |
+| 入力ミスを**同じページで直してもらう** | `fail(422, {...})` | [error / redirect](/docs/sveltekit/error-redirect) |
+| **ページ自体を止める** | `error(404, ...)` / `error(403, ...)` | [error / redirect](/docs/sveltekit/error-redirect) |
+| **別ページへ案内する** | `redirect(303, '/login')` | [error / redirect](/docs/sveltekit/error-redirect) |
+| **普通の HTML フォーム送信** | `form actions` | [form actions](/docs/sveltekit/form-actions) |
+| **JSON API** にしたい | `+server.ts` | [+server.ts](/docs/sveltekit/api-routes) |
+| **`fetch` から呼びたい** | `+server.ts` | [+server.ts](/docs/sveltekit/api-routes) |
+| **JavaScript なしでも動かしたい** | `form actions`（`use:enhance` は**あとがけ**） | [form actions](/docs/sveltekit/form-actions) |
+| **モバイルアプリから叩く** | `+server.ts` | [+server.ts](/docs/sveltekit/api-routes) |
+
+> 迷ったら：**「画面と一緒に出すフォームなら form actions、外部から叩く JSON API なら +server.ts」**。
+
+## 認証・管理画面の流れ（4段）
+
+[お知らせ管理画面](/docs/examples/admin-board) で実装した**4段リレー**：
+
+1. **`hooks.server.ts`** で **`event.locals.user`** をセット
+   → [hooks：入口の受付係](/docs/sveltekit/hooks)
+2. **`+layout.server.ts`** で `/admin/` 配下まるごとを守る
+   → 未ログインなら `redirect(303, '/login')`
+   → 権限なしなら `error(403, ...)`
+   → [error / redirect](/docs/sveltekit/error-redirect)
+3. **`+page.server.ts`** で `load`（一覧取得）と `actions`（追加・削除）を書く
+   → [+page.server.ts](/docs/sveltekit/page-server)・[form actions](/docs/sveltekit/form-actions)
+4. **`+page.svelte`** で表示＋フォーム＋削除ボタンを作る
+   → [お知らせ管理画面](/docs/examples/admin-board)
+
+## 小さなアプリ例の地図
+
+| 例 | 主に使う道具 | 章 |
+| --- | --- | --- |
+| **Todo アプリ** | [`$state`](/docs/svelte/state) ＋ [`bind`](/docs/svelte/bind) ＋ [`{#each}`](/docs/svelte/each) | [Todo アプリ](/docs/examples/todo) |
+| **Todo localStorage版** | [`$effect`](/docs/svelte/effect) ＋ `localStorage` ＋ `typeof window` | [Todo localStorage版](/docs/examples/todo-localstorage) |
+| **Todo server版** | [`form actions`](/docs/sveltekit/form-actions) ＋ [`+page.server.ts`](/docs/sveltekit/page-server) ＋ `fail(422)` | [Todo server版](/docs/examples/todo-server) |
+| **お知らせ一覧** | [`[slug]`](/docs/sveltekit/dynamic-routes) ＋ [`load`](/docs/sveltekit/load) ＋ `error(404)` | [お知らせ一覧](/docs/examples/notice-board) |
+| **検索リスト** | [`bind:value`](/docs/svelte/bind) ＋ [`$derived`](/docs/svelte/derived) ＋ [`{#if}`](/docs/svelte/if) | [検索リスト](/docs/examples/search-list) |
+| **お知らせ管理画面** | [`hooks`](/docs/sveltekit/hooks) ＋ `+layout.server.ts` ＋ `actions` ＋ 権限チェック | [お知らせ管理画面](/docs/examples/admin-board) |
+
+## こんな実務シーンに出会ったら
+
+「**作りたいもの**」から記事を引く一覧です。
+
+| 作りたいもの | おすすめの章 |
+| --- | --- |
+| 自治会の**お知らせサイト** | [お知らせ一覧](/docs/examples/notice-board) ＋ [+layout.svelte](/docs/sveltekit/layout) |
+| **管理者だけが投稿できる**サイト | [お知らせ管理画面](/docs/examples/admin-board) |
+| **検索できる**FAQ・商品一覧 | [検索リスト](/docs/examples/search-list) |
+| **個人メモ**ツール（端末に残る） | [Todo localStorage版](/docs/examples/todo-localstorage) |
+| **ログイン**つきタスク管理 | [hooks](/docs/sveltekit/hooks) ＋ [Todo server版](/docs/examples/todo-server) |
+| **モバイルアプリ向けバックエンド** | [+server.ts](/docs/sveltekit/api-routes) |
+| 表示テーマの**設定保存** | [ダークモード](/docs/patterns/dark-mode) |
+| ナビの**現在地ハイライト** | [現在地メニューに下線](/docs/patterns/active-nav) |
+| データ表示で**真っ白を防ぐ** | [4状態UI](/docs/patterns/loading-error) |
+
+## 今はここだけ覚えればOK
+
+> **画面の動き → Svelte。サイトの組み立て → SvelteKit。**
+> **迷ったら `+page.svelte` から書き始める。**
+> **サーバー処理は `+page.server.ts`。API は `+server.ts`。ログイン確認は `hooks.server.ts`。**
+> **管理画面は `hooks` + `+layout.server.ts` + `+page.server.ts` + `+page.svelte` の4段。**
+
+サイトのほとんどは、この**4文**で迷わなくなります。
+
+## 次に作る小さな練習
+
+- このチートシートを見ながら、**読み返したい記事を1つ**選んで開く
+- 「**自分が作りたいもの**」に近い実例を、上の **「こんな実務シーンに出会ったら」** から1つ選ぶ
+- そのページの**ファイル構成**を**紙に書いてみる**（フォルダの入れ子だけでもOK）
+- 自分のプロジェクトに、**そのファイル構成だけ**を先に作る（中身は空でOK）
+- このページを**ブックマーク**しておく — 詰まった時にここに戻れば、必ず次の一歩がわかります 🗺

@@ -1,0 +1,184 @@
+---
+title: Svelte と SvelteKit の違い
+name: Svelte と SvelteKit
+description: 似ている2つの名前を、暗記ではなくイメージで覚えるページ。Svelte は「画面部品を作る道具」、SvelteKit は「その部品でWebサイト全体を作る道具箱」。レゴのたとえで説明します。
+category: はじめに
+order: 18
+---
+
+## ひとことで言うと
+
+> **Svelte** は **「画面部品を作る道具」**。
+> **SvelteKit** は **「その部品で、WebサイトやWebアプリ全体を作る道具箱」**。
+
+似た名前で混乱しやすいですが、**役割がきれいに分かれています**。
+
+## たとえ話：レゴで家を建てる
+
+| たとえ | これ |
+| --- | --- |
+| **レゴの部品を作る力** | **Svelte**（ボタン・カード・入力欄など**1個ずつの部品**を作る） |
+| **そのレゴで家を建てるための、設計図・住所・玄関・部屋割り・配線まで用意してくれる箱** | **SvelteKit**（部品を組み合わせて、**家＝サイトまるごと**を作る） |
+
+レゴのブロックは、それ単体でも遊べます。
+でも「**ちゃんとした家**」を作るには、**設計図や部屋割り**が必要ですよね。
+
+- **部品（Svelte）** … ボタン、カード、入力欄、TodoItem
+- **家（SvelteKit）** … `/about` ページ、`/blog/[slug]`、ログイン、フォーム送信、サーバー処理
+
+部品だけあっても**家にはなりません**。
+家を作る道具だけあっても、**部品が無ければ何も組めません**。
+**両方を使って初めて Web サイトが完成**します。
+
+## Svelte は何をする？
+
+Svelte は、**画面の小さな部品**を作るための言語＆コンパイラです。
+
+「**1個ずつの部品**」のイメージです：
+
+- **ボタン**（`<MyButton>`）
+- **入力欄**（`<SearchBox>`）
+- **TodoItem**（リストの1行）
+- **Header**（共通ヘッダー）
+- **Card**（情報カード）
+- **Modal**（ダイアログ）
+
+そして、その部品の**ふるまい**を書く道具がそろっています：
+
+- [`$state`](/docs/svelte/state) … **変わる値**を入れる箱
+- [`props`](/docs/svelte/props) … **親から子へ渡す**荷物
+- [`bind`](/docs/svelte/bind) … 画面と変数を**ひもでつなぐ**
+- [`{#if}`](/docs/svelte/if) … **条件で表示**を切り替える
+- [`{#each}`](/docs/svelte/each) … **リストを並べる**
+- [class / style](/docs/svelte/class-style) … **状態に応じた見た目**
+
+> 「**ボタンや入力欄など、画面の1部品**を動かすのに必要な道具」——これが **Svelte の世界**です。
+
+ファイルの拡張子は **`.svelte`**。中身は HTML / CSS / JavaScript（または TypeScript）が**1つのファイルに同居**できます。
+
+## SvelteKit は何をする？
+
+SvelteKit は、**部品を集めて Web サイトまるごとを作る**ための道具箱です。
+
+「**サイトとして必要なこと、全部**」のイメージ：
+
+- **URL をページに対応させる** … `/about`、`/blog/hello` など
+- **`src/routes/` でページを並べる** … フォルダ＝URL
+- [`+page.svelte`](/docs/sveltekit/page) … **ページ本体**
+- [`+layout.svelte`](/docs/sveltekit/layout) … **共通レイアウト**（ヘッダー・フッター）
+- [`[slug]`](/docs/sveltekit/dynamic-routes) … **動的ルート**（ブログ詳細など）
+- [`load`](/docs/sveltekit/load) … **ページ表示前のデータ準備**
+- [`form actions`](/docs/sveltekit/form-actions) … **フォーム送信の受付**
+- **API routes** … `+server.ts` で自分の API を作れる
+- **error / redirect / hooks** … エラー画面・転送・受付係など実務向けの仕組み
+
+> 「**サイトとして必要なこと、全部**」——これが **SvelteKit の世界**です。
+
+`+page.svelte` の中身は **Svelte で書きます**。
+**Svelte の上に、サイト作りに必要な仕組みをかぶせたもの**——それが SvelteKit です。
+
+## ざっくり表で比較
+
+| 項目 | **Svelte** | **SvelteKit** |
+| --- | --- | --- |
+| **役割** | 画面**部品**を作る | **アプリ全体**を作る |
+| **主に書くファイル** | `*.svelte`（コンポーネント） | `src/routes/`、`+page.svelte`、`+layout.svelte`、`+page.server.ts` |
+| **例** | ボタン、入力欄、TodoItem、Card | `/about` ページ、`/blog/[slug]`、フォーム送信、ログイン |
+| **まず覚えること** | `$state` / `props` / `bind` / `{#if}` / `{#each}` / class | routes / `+page.svelte` / `+layout.svelte` / `load` / form actions |
+| **何が嬉しい？** | 画面の動きが**短く書ける** | サイト1個分の仕組みが**最初から揃っている** |
+| **ファイル単体で動く？** | 部品なら動く | 通常は SvelteKit の中で動かす |
+
+> **Svelte は「中身」、SvelteKit は「箱と運び方」**——そんなイメージです。
+
+## 最初はどちらから覚える？
+
+おすすめは、**こういう順番**です。
+
+1. **SvelteKit プロジェクトの箱を作る**（[プロジェクトを作る](/docs/intro/setup)）
+2. その中の **`+page.svelte`** で Svelte を練習する（[最初はどこに書く？](/docs/intro/where-to-write)）
+3. 慣れてきたら **`/about` などのページ**を増やす（フォルダを作る）
+4. さらに `load` や `form actions` でサーバー処理に挑戦する
+
+つまり、
+
+> **「SvelteKit の箱を先に作っておいて、その中で Svelte を練習する」**
+
+が**いちばん自然**です。
+
+「**Svelte だけを単独で勉強して、あとで SvelteKit に切り替える**」というやり方もできますが、**急いでなければ最初から SvelteKit プロジェクトの中で**触るのがラクです。
+
+## よくある勘違い
+
+### Q. Svelte だけで Web サイトは作れないの？
+
+A. **小さな部品や単体アプリ**なら作れます。
+ただし、**ページ分け（URL ごとに違う画面）**や**サーバー処理（フォーム送信・DB 保存）**まで考えるなら、**SvelteKit を使う方が圧倒的にラク**です。
+最初から SvelteKit を選んでおけば、必要になったときに**すぐ広げられる**のが大きな利点。
+
+### Q. SvelteKit を使うなら Svelte を覚えなくていい？
+
+A. **いいえ、Svelte は必須**です。
+SvelteKit のページ本体（`+page.svelte`）は、**中身が Svelte コード**だからです。
+逆に言えば、**Svelte の知識はそのまま SvelteKit でも全部使える**ので、無駄になりません。
+
+### Q. 最初から SvelteKit は難しすぎない？
+
+A. **大丈夫です。**
+最初は **`src/routes/+page.svelte` だけ**触ればOK。
+`load` や `form actions` のような難しめの仕組みは、**必要になってから1つずつ覚えれば**OK。
+[最初はどこに書く？](/docs/intro/where-to-write) のページが、まさにこの「**最初はここだけ触ればOK**」を教える章です。
+
+### Q. React と Next.js みたいな関係？
+
+A. **少し似ています**（知らなくてもこのページは読めます）。
+
+- React に対する **Next.js**（フレームワーク）
+- Svelte に対する **SvelteKit**（フレームワーク）
+
+「**部品を作る道具**」と「**サイト全体を作る道具箱**」のペア、という構造は共通しています。
+React / Next.js を知らなくても、**Svelte と SvelteKit の役割分担**はこのページのたとえ話だけで十分わかります。
+
+## 実務ではどう考える？
+
+実務では、**両方を一緒に使います**。
+場面ごとにどっちの世界か、を意識すると迷いません。
+
+| 場面 | 使う道具 | 該当章 |
+| --- | --- | --- |
+| **ボタンやカードを作る** | Svelte | [props](/docs/svelte/props) / [class / style](/docs/svelte/class-style) |
+| **入力欄や検索欄を扱う** | Svelte | [bind](/docs/svelte/bind) / [$state](/docs/svelte/state) |
+| **リストを並べる** | Svelte | [`{#each}`](/docs/svelte/each) |
+| **ページを増やす** | SvelteKit | [+page.svelte](/docs/sveltekit/page) |
+| **共通レイアウトを作る** | SvelteKit | [+layout.svelte](/docs/sveltekit/layout) |
+| **URL に slug を使う** | SvelteKit | [`[slug]`](/docs/sveltekit/dynamic-routes) |
+| **データを読みこむ** | SvelteKit | [load](/docs/sveltekit/load) |
+| **フォームを送る** | SvelteKit | [form actions](/docs/sveltekit/form-actions) |
+| **サーバー側の処理を置く** | SvelteKit | `+page.server.ts` / `$lib/server/` |
+
+> **「画面の動きは Svelte、サイトの組み立ては SvelteKit」**
+> このひとことを覚えておけば、実務でもほぼ迷いません。
+
+## 今日のまとめ
+
+- **Svelte** ＝ **画面部品を作る道具**（レゴの部品を作る力）
+- **SvelteKit** ＝ **その部品でサイトまるごと作る道具箱**（家を建てる設計図・配線・部屋割り）
+- ファイルでいうと、Svelte は **`*.svelte`**、SvelteKit は **`src/routes/`** の中
+- 実務では**両方一緒に使う**（画面の動き＝Svelte / サイトの組み立て＝SvelteKit）
+- 最初は **SvelteKit プロジェクトの中で Svelte を練習する**のが自然
+
+## 今はここだけでOK
+
+> **「画面の動き → Svelte。サイトの組み立て → SvelteKit。」**
+
+このひとことだけで十分です。
+迷ったらこのページに戻ってきてください。
+
+## 次に作る小さな練習
+
+- [プロジェクトを作る](/docs/intro/setup) のページに沿って、自分の SvelteKit プロジェクトを作る（まだなら）
+- [最初はどこに書く？](/docs/intro/where-to-write) のページを見ながら、`src/routes/practice/+page.svelte` を作る
+- その中に、[$state](/docs/svelte/state) のカウンターを書く
+- そして、心の中でこう言ってみる：
+  - 「**`$state` でカウンターが動くのは Svelte の力**」
+  - 「**でも、`/practice` という URL でこのページが見えるのは SvelteKit の力**」
+- このセリフがピンときたら、**もう Svelte と SvelteKit の違いは卒業**です 🎉

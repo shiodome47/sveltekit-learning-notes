@@ -1,0 +1,179 @@
+---
+title: type と interface の使い分け
+name: type / interface
+description: SvelteKit の実務でよく見る type と interface。形は似ているけれど、それぞれの得意分野を「迷ったら type から」を軸にやさしく整理します。
+category: TypeScript 実践基本
+order: 20
+---
+
+## ひとことで言うと
+
+`type` と `interface` は、ひとことで言うと
+
+> **「オブジェクトの形に名前を付ける道具」**
+
+です。
+SvelteKit 実務では**どちらでも書ける**場面が多いので、まずは「**だいたい同じもの**」と思って大丈夫です。
+
+## まずは安心してほしいこと
+
+「**`type` と `interface` どっち使えばいいの？**」と最初に詰まりがちですが、
+
+> **どちらを使ってもサイトはちゃんと動きます。**
+> 迷ったら **`type` から始める**のが、初心者にも実務にもおすすめ。
+
+このサイトの Todo・Notice・Theme などは**すべて `type` で書いています**。
+
+## たとえ話：荷物の中身を書く伝票
+
+| たとえ | コード |
+| --- | --- |
+| 「**この箱には何が入っているか**」を書く伝票 | `type` または `interface` |
+| 伝票の名前 | `Todo`, `Notice`, `User` などの**型名** |
+| 伝票の項目 | `id`, `text`, `done` などの**プロパティ** |
+
+伝票のフォーマットを決めておけば、**箱に間違ったものを入れたら TypeScript が止めてくれる**——それが型の役割です（→ [型は「名札」](/docs/typescript/types)）。
+
+## type と interface の書き方
+
+完全に**同じ意味**です。書き方が少しだけ違うだけ。
+
+```ts
+// type で書くパターン
+type Todo = {
+	id: string;
+	text: string;
+	done: boolean;
+};
+```
+
+```ts
+// interface で書くパターン
+interface User {
+	id: string;
+	name: string;
+}
+```
+
+### これは何をしているか
+
+- どちらも「**オブジェクトの中身**」を決めている
+- `type` は **`= { ... }`** で書く
+- `interface` は **`{ ... }`** で書く（`=` はない）
+- 使う側はどちらも `let user: User = { ... }` のように**同じ形**
+
+## SvelteKit 実務では？
+
+このサイトでは、**Todo / Notice / Theme** などぜんぶ `type` で書いています。
+
+- props の型 → `type Props = { ... }`
+- データの型 → `type Notice = { ... }`
+- 状態の型 → `type Theme = 'light' | 'dark'` （次の章の Union 型）
+
+理由はシンプルで：
+
+| ポイント | type が便利な理由 |
+| --- | --- |
+| **柔軟さ** | union（`'a' / 'b'` のような選択肢）や `Pick` / `Omit` など、**いろんな書き方に使える** |
+| **書き方の統一** | プリミティブも union もオブジェクトも、**`type` 一本で書ける** |
+| **読みやすさ** | `=` があるので「**何を定義しているか**」が一目でわかる |
+
+> ただし、チームに「**`interface` を使うルール**」があるなら、それに合わせるのがマナーです。
+> どちらにも長所があるので「**好みと文化**」と思ってOK。
+
+## interface のちょっと得意な場面
+
+`interface` には、**同じ名前で何度も書くと自動で合体する**という特技があります。
+
+```ts
+interface User {
+	id: string;
+	name: string;
+}
+
+interface User {
+	email: string;
+}
+
+// → User は { id; name; email } の3つを持つ型に合体する
+```
+
+### これは何をしているか
+
+- 同じ `interface` を**重ねて宣言**できる
+- ライブラリの型を**外から拡張**したいときに便利
+- アプリのコードを書くだけなら、**ほぼ出番なし**
+
+> SvelteKit の **`app.d.ts`** で `interface App.Locals` を拡張するときに、これを使います（→ [hooks](/docs/sveltekit/hooks) で軽く紹介）。
+
+## Svelte の props で使う
+
+Svelte コンポーネントの props にも、`type` で名札を付けるのが定番です（→ [props](/docs/svelte/props)）。
+
+```svelte
+<!-- TodoItem.svelte -->
+<script lang="ts">
+	type Props = {
+		todo: { id: string; text: string; done: boolean };
+	};
+
+	let { todo }: Props = $props();
+</script>
+
+<li>{todo.text}</li>
+```
+
+### これは何をしているか
+
+- `type Props = { ... }` … この子コンポーネントが**受け取る荷物の形**
+- `let { todo }: Props = $props()` … 「`$props()` の中身は `Props` 型」と TypeScript に伝える
+- 親が `<TodoItem todo={...} />` で**間違った形のデータを渡すとエラー**
+
+## 既存の Todo / Notice 型を読みなおす
+
+サイトの実例で出てきた型をまとめると：
+
+```ts
+// Todo（Todo アプリ）
+type Todo = {
+	id: number;
+	text: string;
+	done: boolean;
+};
+
+// Notice（お知らせ一覧）
+type Notice = {
+	slug: string;
+	title: string;
+	body: string;
+	createdAt: string;
+};
+
+// Theme（ダークモード）
+type Theme = 'light' | 'dark';
+```
+
+[Todo アプリ](/docs/examples/todo) も [お知らせ一覧](/docs/examples/notice-board) も [ダークモード](/docs/patterns/dark-mode) も、ぜんぶ `type` で書いています。
+**1つの書き方で統一できる**のが、`type` を選ぶ実務感覚です。
+
+## 今日のまとめ
+
+- `type` と `interface` は、ほぼ**同じもの**
+- 迷ったら **`type` から書く**
+- SvelteKit 実務では **`type` 一本**で大体足りる
+- `interface` の特技は「**同じ名前で重ねて拡張**」（`app.d.ts` などで使う）
+- Svelte props も `type Props = { ... }` の形が定番
+
+## 今はここだけでOK
+
+> **「迷ったら `type` から書く」**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- [Todo アプリ](/docs/examples/todo) のコードを開いて、`type Todo = { ... }` を**何も見ずに書いてみる**
+- 自分のサイトに**新しいデータ型**を1つ増やすつもりで、`type Article = { ... }` を作ってみる
+- 同じ内容を `interface Article { ... }` でも書いてみて、**まったく同じように使える**ことを確認する
+- Svelte の `<MyComponent>` を作って、`type Props = { ... }` で props の形を書いてみる
+- [お知らせ一覧](/docs/examples/notice-board) の `Notice` 型を読み返して、自分のサイトに移植する場面を想像する

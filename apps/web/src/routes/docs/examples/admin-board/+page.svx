@@ -1,0 +1,583 @@
+---
+title: お知らせ管理画面を作ろう
+name: お知らせ管理画面
+description: hooks / +layout.server.ts / form actions / error / redirect を全部使った実例。サイトの集大成として、ログイン中の管理者だけがお知らせを追加・削除できる画面を作ります。
+category: 小さなアプリ例
+order: 60
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import AdminBoardDemo from './_AdminBoardDemo.svelte';
+
+	const hooksSource = `// src/hooks.server.ts
+//
+// 入口の受付係。Cookie を見て locals.user をセットする。
+// ここでは仮ユーザー。実務ではセッションストアやDBで照合する。
+
+import type { Handle } from '@sveltejs/kit';
+
+export const handle: Handle = async ({ event, resolve }) => {
+	// 実際は event.cookies.get('session') を見てDBで照合する。
+	// このページのデモでは「常に admin としてログイン中」とみなす。
+	event.locals.user = { name: 'Taro', role: 'admin' };
+
+	return await resolve(event);
+};
+`;
+
+	const layoutServerSource = `// src/routes/admin/+layout.server.ts
+//
+// /admin/ 配下まるごとを守る守衛。
+// 未ログイン → /login へ案内。
+// 権限なし → 403 で止める。
+
+import { error, redirect } from '@sveltejs/kit';
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = ({ locals }) => {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	if (locals.user.role !== 'admin') {
+		error(403, '管理者だけが見られます');
+	}
+
+	return {
+		user: locals.user
+	};
+};
+`;
+
+	const noticesSource = `// src/lib/server/notices.ts
+//
+// お知らせの保存処理。今回はインメモリ。
+// 実務ではDB（Postgres / MySQL / SQLite）に置きかえる。
+
+export type Notice = {
+	id: number;
+	title: string;
+	body: string;
+	createdAt: string;
+};
+
+let notices: Notice[] = [];
+let nextId = 1;
+
+export function getNotices(): Notice[] {
+	return [...notices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function createNotice(title: string, body: string): Notice {
+	const notice: Notice = {
+		id: nextId++,
+		title,
+		body,
+		createdAt: new Date().toISOString().slice(0, 10)
+	};
+	notices.push(notice);
+	return notice;
+}
+
+export function deleteNotice(id: number): void {
+	notices = notices.filter((n) => n.id !== id);
+}
+`;
+
+	const pageServerSource = `// src/routes/admin/notices/+page.server.ts
+//
+// 管理画面の load と actions。
+// /admin/+layout.server.ts ですでに権限チェック済みなので、
+// ここでは「ログイン済みの管理者」前提で書いてOK。
+
+import { fail } from '@sveltejs/kit';
+import { createNotice, deleteNotice, getNotices } from '$lib/server/notices';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return {
+		notices: getNotices()
+	};
+};
+
+export const actions: Actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const title = String(data.get('title') ?? '').trim();
+		const body = String(data.get('body') ?? '').trim();
+
+		if (title === '' || body === '') {
+			return fail(422, {
+				error: 'タイトルと本文を入力してください',
+				title,
+				body
+			});
+		}
+
+		createNotice(title, body);
+		return { ok: true };
+	},
+
+	delete: async ({ request }) => {
+		const data = await request.formData();
+		const id = Number(data.get('id'));
+		deleteNotice(id);
+		return { ok: true };
+	}
+};
+`;
+
+	const pageSource = `<!-- src/routes/admin/notices/+page.svelte -->
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	let { data, form } = $props();
+<\/script>
+
+<header>
+	<span class="badge">🛡 管理者：{data.user.name}</span>
+	<h1>お知らせ管理</h1>
+</header>
+
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+
+<form method="POST" action="?/create" use:enhance>
+	<input
+		type="text"
+		name="title"
+		placeholder="タイトル"
+		value={form?.title ?? ''}
+	/>
+	<textarea
+		name="body"
+		placeholder="本文"
+		rows="3">{form?.body ?? ''}</textarea>
+	<button type="submit">追加</button>
+</form>
+
+{#if data.notices.length === 0}
+	<p>まだお知らせはありません</p>
+{:else}
+	<ul>
+		{#each data.notices as notice (notice.id)}
+			<li>
+				<article>
+					<h3>{notice.title}</h3>
+					<time>{notice.createdAt}</time>
+					<p>{notice.body}</p>
+				</article>
+				<form method="POST" action="?/delete" use:enhance>
+					<input type="hidden" name="id" value={notice.id} />
+					<button type="submit" aria-label="{notice.title} を削除">×</button>
+				</form>
+			</li>
+		{/each}
+	</ul>
+{/if}
+`;
+</script>
+
+## ひとことで言うと
+
+管理画面は、ひとことで言うと
+
+> **「ログインした管理者だけが、お知らせを追加・削除できるページ」**
+
+です。
+このサイトでこれまで作ってきた[hooks](/docs/sveltekit/hooks) / [+layout.server.ts](/docs/sveltekit/layout) / [form actions](/docs/sveltekit/form-actions) / [error / redirect](/docs/sveltekit/error-redirect) を**全部一緒に使う**、サイトの集大成ページです。
+
+## たとえ話：掲示板の裏側
+
+普通のお知らせページは「**掲示板を見る場所**」（誰でも見られる）。
+管理画面は「**掲示板に紙を貼ったり、古い紙を外したりする裏側の部屋**」です。
+
+| たとえ | コード |
+| --- | --- |
+| **裏側の部屋の入口** | `src/routes/admin/+layout.server.ts` |
+| **誰でも入れたら困るので、入口で確認する人** | `event.locals.user` のチェック |
+| **未ログインなら「会員カードはあちらで」** | `redirect(303, '/login')` |
+| **ログイン済みでも一般会員なら「ここは管理者専用です」** | `error(403, '...')` |
+| **無事通れたら、紙を貼る作業（投稿）** | `actions.create` |
+| **紙をはがす作業（削除）** | `actions.delete` |
+
+## このページで作るもの
+
+- **`/admin/notices`** のような管理画面
+- **管理者だけ入れる入口チェック**
+- お知らせ**一覧の読み込み**
+- お知らせ**追加フォーム**
+- お知らせ**削除フォーム**
+- 権限なしなら **`error(403)`**
+- 未ログインなら **`redirect('/login')`**
+- 入力ミスなら **`fail(422, ...)`**
+
+## これまでの章とのつながり
+
+このページは、**今まで作ってきた章の総合演習**です。
+
+- [hooks：入口の受付係](/docs/sveltekit/hooks) … `locals.user` をセット
+- [+layout.svelte](/docs/sveltekit/layout)・[+page.server.ts](/docs/sveltekit/page-server) … 守衛と画面の役割分担
+- [load：表示前の材料集め](/docs/sveltekit/load) … お知らせ一覧の取得
+- [form actions](/docs/sveltekit/form-actions) … 追加・削除
+- [error / redirect](/docs/sveltekit/error-redirect) … 未ログイン・権限なしの処理
+- [お知らせ一覧](/docs/examples/notice-board) … 「**読み出し版**」の同じデータ
+- [Todo server版](/docs/examples/todo-server) … `actions` と `fail` の練習
+- [class / style](/docs/svelte/class-style) … 管理者バッジ・エラー表示の見た目
+
+## 完成プレビュー
+
+下のプレビューで、管理画面の**動きと見た目**を試せます。
+タブを切り替えると、**実際に動かすために必要な5ファイル**が順に読めます。
+
+<ComponentPreview
+	sources={[
+		{ name: 'src/hooks.server.ts', code: hooksSource, language: 'typescript' },
+		{ name: 'src/routes/admin/+layout.server.ts', code: layoutServerSource, language: 'typescript' },
+		{ name: 'src/lib/server/notices.ts', code: noticesSource, language: 'typescript' },
+		{ name: 'src/routes/admin/notices/+page.server.ts', code: pageServerSource, language: 'typescript' },
+		{ name: 'src/routes/admin/notices/+page.svelte', code: pageSource, language: 'svelte' }
+	]}
+>
+	<AdminBoardDemo />
+</ComponentPreview>
+
+> 上のプレビューは**疑似デモ**です（`$state` で動いています）。
+> 本物の SvelteKit では、追加・削除のたびに**サーバーへフォーム送信**され、保存処理が走ります。
+
+## ファイル構成
+
+```bash
+src/
+├─ hooks.server.ts                          ← 入口の受付係
+├─ lib/
+│  └─ server/
+│     └─ notices.ts                         ← 保存処理（DBへ置きかえ可能）
+└─ routes/
+   └─ admin/
+      ├─ +layout.server.ts                  ← admin配下を守る守衛
+      └─ notices/
+         ├─ +page.server.ts                 ← load + actions（追加・削除）
+         └─ +page.svelte                    ← 管理画面の表示
+```
+
+役割を一言で：
+
+| ファイル | 役割 |
+| --- | --- |
+| `hooks.server.ts` | 入口で `locals.user` をセット |
+| `routes/admin/+layout.server.ts` | `/admin/` 配下**まるごと**を守る |
+| `routes/admin/notices/+page.server.ts` | 一覧取得 + 追加・削除の `actions` |
+| `routes/admin/notices/+page.svelte` | 管理画面の見た目 |
+| `lib/server/notices.ts` | 保存処理本体（`$lib/server/`） |
+
+それでは **5ステップ**で組み立てていきます。
+
+<Steps>
+
+<Step title="Step 1：hooks.server.ts で user を locals に入れる">
+
+すべてのリクエストの入口で、**いまアクセスしている人が誰か**を `locals.user` に入れます（→ [hooks](/docs/sveltekit/hooks)）。
+
+```ts
+// src/hooks.server.ts
+import type { Handle } from '@sveltejs/kit';
+
+export const handle: Handle = async ({ event, resolve }) => {
+	// 実際は event.cookies.get('session') を見てDBで照合する。
+	// このページのデモでは「常に admin としてログイン中」とみなす。
+	event.locals.user = { name: 'Taro', role: 'admin' };
+
+	return await resolve(event);
+};
+```
+
+### これは何をしているか
+
+- ファイルは **`src/hooks.server.ts`**（**ルートの直下**、`routes/` の中ではない）
+- `event.locals.user` … 「**この人が誰か**」をセットする受付メモ
+- `await resolve(event)` … 通常の SvelteKit 処理に進める
+
+> **本物の実務**では、`event.cookies.get('session')` でセッションIDを読み、**DBやセッションストアで照合**してユーザーを決めます。
+> 今回はデモなので「**常に admin**」と決め打ちにしています。
+
+</Step>
+
+<Step title="Step 2：+layout.server.ts で admin 配下を守る">
+
+`/admin/` 配下の**全ページ**にまとめてかける守衛です。
+
+```ts
+// src/routes/admin/+layout.server.ts
+import { error, redirect } from '@sveltejs/kit';
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = ({ locals }) => {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	if (locals.user.role !== 'admin') {
+		error(403, '管理者だけが見られます');
+	}
+
+	return {
+		user: locals.user
+	};
+};
+```
+
+### これは何をしているか
+
+- ファイルは **`+layout.server.ts`**（`+page` ではなく `+layout`）
+- `/admin/` 以下のすべてのページが、表示前に**ここを通る**
+- **未ログイン** → `redirect(303, '/login')` で[ログインページへ案内](/docs/sveltekit/error-redirect)
+- **権限なし** → `error(403, ...)` で**ページを止める**
+- 通れたら `user` を返す → 各ページの `data.user` で使える
+
+> **「`/admin/` 配下のページに同じ守りを書きたくない**」と思ったら、`+layout.server.ts` の出番。
+> `notices/` 以外に `users/`・`reports/` を足しても、**この1ファイルが守ってくれる**のがうれしいところです。
+
+</Step>
+
+<Step title="Step 3：$lib/server/notices.ts に保存処理を置く">
+
+サーバー側だけで使う保存処理を**一箇所にまとめる**のが、実務の鉄則です。
+
+```ts
+// src/lib/server/notices.ts
+export type Notice = {
+	id: number;
+	title: string;
+	body: string;
+	createdAt: string;
+};
+
+let notices: Notice[] = [];
+let nextId = 1;
+
+export function getNotices(): Notice[] {
+	return [...notices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function createNotice(title: string, body: string): Notice {
+	const notice: Notice = {
+		id: nextId++,
+		title,
+		body,
+		createdAt: new Date().toISOString().slice(0, 10)
+	};
+	notices.push(notice);
+	return notice;
+}
+
+export function deleteNotice(id: number): void {
+	notices = notices.filter((n) => n.id !== id);
+}
+```
+
+### これは何をしているか
+
+- `Notice` 型 … お知らせ1件の[名札](/docs/typescript/types)
+- `getNotices()` … 新着順に並べて返す
+- `createNotice(title, body)` … 1件追加
+- `deleteNotice(id)` … `id` で見つけて消す
+- `$lib/server/` 配下なので、**ブラウザに絶対に渡らない**（→ [+page.server.ts](/docs/sveltekit/page-server)）
+
+> 実務でDBにする時は、この**3つの関数の中身だけ**を SQL に置きかえます。
+> `getNotices` の中で `SELECT * FROM notices`、`createNotice` の中で `INSERT INTO notices ...`、と差し替えるだけ。
+> **画面側のコードは1行も変えなくて済む**——これが「**インターフェースを揃える**」威力です。
+
+</Step>
+
+<Step title="Step 4：+page.server.ts で load と actions を書く">
+
+管理画面用の `load`（一覧取得）と `actions`（追加・削除）です。
+
+```ts
+// src/routes/admin/notices/+page.server.ts
+import { fail } from '@sveltejs/kit';
+import { createNotice, deleteNotice, getNotices } from '$lib/server/notices';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return {
+		notices: getNotices()
+	};
+};
+
+export const actions: Actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const title = String(data.get('title') ?? '').trim();
+		const body = String(data.get('body') ?? '').trim();
+
+		if (title === '' || body === '') {
+			return fail(422, {
+				error: 'タイトルと本文を入力してください',
+				title,
+				body
+			});
+		}
+
+		createNotice(title, body);
+		return { ok: true };
+	},
+
+	delete: async ({ request }) => {
+		const data = await request.formData();
+		const id = Number(data.get('id'));
+		deleteNotice(id);
+		return { ok: true };
+	}
+};
+```
+
+### これは何をしているか
+
+- `load` … 一覧を画面側へ渡す
+- `actions.create` … タイトル + 本文を受け取って追加。**空ならバリデーションエラー**（→ [error / redirect](/docs/sveltekit/error-redirect)）
+- `actions.delete` … `id` を受け取って削除（`hidden input` で送る）
+- **`+layout.server.ts` で守られている前提**なので、ここで権限チェックは**書かなくてOK**
+
+> 「**入口を1か所で守る**」「**各ページは目的に集中する**」——これが SvelteKit のサーバー側設計のポイントです。
+
+</Step>
+
+<Step title="Step 5：+page.svelte で管理画面を作る">
+
+最後に、画面の見た目を組み立てます。これまでの章で作った[+page.svelte](/docs/sveltekit/page) と[form actions](/docs/sveltekit/form-actions) の合わせ技。
+
+```svelte
+<!-- src/routes/admin/notices/+page.svelte -->
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	let { data, form } = $props();
+</script>
+
+<header>
+	<span class="badge">🛡 管理者：{data.user.name}</span>
+	<h1>お知らせ管理</h1>
+</header>
+
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+
+<form method="POST" action="?/create" use:enhance>
+	<input
+		type="text"
+		name="title"
+		placeholder="タイトル"
+		value={form?.title ?? ''}
+	/>
+	<textarea
+		name="body"
+		placeholder="本文"
+		rows="3">{form?.body ?? ''}</textarea>
+	<button type="submit">追加</button>
+</form>
+
+{#if data.notices.length === 0}
+	<p>まだお知らせはありません</p>
+{:else}
+	<ul>
+		{#each data.notices as notice (notice.id)}
+			<li>
+				<article>
+					<h3>{notice.title}</h3>
+					<time>{notice.createdAt}</time>
+					<p>{notice.body}</p>
+				</article>
+				<form method="POST" action="?/delete" use:enhance>
+					<input type="hidden" name="id" value={notice.id} />
+					<button type="submit" aria-label="{notice.title} を削除">×</button>
+				</form>
+			</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `data.user.name` … `+layout.server.ts` から流れてくるユーザー情報
+- `form?.error` … バリデーションエラーの表示
+- `value={form?.title ?? ''}` … エラーで戻ってきても**入力を消さない**（地味だが大事）
+- `<form action="?/create" use:enhance>` … スムーズ送信つきの追加フォーム
+- 削除フォーム … **行ごとに `<form>` を置く**のがコツ。`hidden input` で `id` を送る
+- すべて [`{#if}`](/docs/svelte/if) と [`{#each}`](/docs/svelte/each) と[class:](/docs/svelte/class-style) の組み合わせで書ける
+
+> **「フォームが2つ同じページにある」**のがポイント。
+> [`form actions`](/docs/sveltekit/form-actions) の **named actions**（`?/create`・`?/delete`）が、**1ページに複数フォーム**を成立させる仕組みです。
+
+</Step>
+
+</Steps>
+
+## 実務ではどう発展する？
+
+このページのコードは、**自治会・サークル・社内ポータル・FAQ管理**に**ほぼそのまま**使えます。
+育てるときの代表的な発展先：
+
+| やりたいこと | 発展ポイント |
+| --- | --- |
+| **本物のログイン** | `hooks.server.ts` で Cookie をDB照合。ログイン用の `actions` を追加 |
+| **DB保存** | `$lib/server/notices.ts` の中身だけ置きかえ。**画面側は1行も変えない** |
+| **公開/非公開フラグ** | `Notice` に `published: boolean` を足し、一覧で `class:draft` |
+| **Markdown 本文** | サーバー側で marked → サニタイズ → `{@html safeHtml}` |
+| **画像アップロード** | `actions.create` で `formData.get('image')` を受け、`/static/` か CDN へ |
+| **更新日時** | `Notice` に `updatedAt?: string` を足し、`actions.update` を追加 |
+| **作成者ID** | `Notice` に `authorId: number` を足し、`locals.user.id` から自動セット |
+| **CSRF 対策** | `hooks.server.ts` で Origin チェック・SvelteKit の組み込み機能を活用 |
+| **監査ログ** | `hooks.server.ts` で全リクエストを記録（誰が何時にどこへ） |
+| **検索・絞りこみ** | [検索リスト](/docs/examples/search-list) の型を組みこむ。サーバー側なら [+server.ts](/docs/sveltekit/api-routes) |
+| **編集モード** | 行をクリックで `+page.svelte` 内モーダル → `actions.update` |
+| **権限の細分化** | `role: 'admin' | 'editor' | 'viewer'` に拡張、`+layout.server.ts` で振り分け |
+
+> **「インターフェース（関数の形）を保てば、置きかえてもページ側は変えなくていい」**——これが今回の章の最大の学びです。
+
+## localStorage版・Todo server版・お知らせ一覧との違い
+
+サイト内の主要な実例ページを並べると、性格がはっきりします。
+
+| ページ | 主役 | データの居場所 | 権限 | CRUD |
+| --- | --- | --- | --- | --- |
+| [Todo](/docs/examples/todo) | ローカル状態 | メモリ | なし | C・U・D |
+| [Todo localStorage版](/docs/examples/todo-localstorage) | 永続化 | ブラウザ | なし | C・U・D |
+| [Todo server版](/docs/examples/todo-server) | サーバー保存 | サーバー | なし | C・U・D |
+| [お知らせ一覧](/docs/examples/notice-board) | 読み出し中心 | サーバー | **不要**（公開） | **R のみ** |
+| [検索リスト](/docs/examples/search-list) | 絞りこみ | クライアント | なし | R（フィルタ） |
+| **お知らせ管理画面（今回）** | **権限つきCRUD** | **サーバー** | **管理者のみ** | **C・R・D** |
+
+**「公開ページ + 管理画面」の2層構造**が、実務アプリの基本形です。
+
+- **公開向け** → [お知らせ一覧](/docs/examples/notice-board)（**R のみ**）
+- **裏方向け** → このページ（**C・R・D**）
+
+`$lib/server/notices.ts` を**両方が共有**するので、**同じデータが常に整合**します。
+
+## 今日のまとめ
+
+- 管理画面 ＝ **`hooks` + `+layout.server.ts` + `+page.server.ts` + `+page.svelte` + `$lib/server/`** の合わせ技
+- 守衛は **`+layout.server.ts`** に置く（配下まるごと守れる）
+- 各ページは「**ログイン済みの管理者前提**」で書ける（守られているから）
+- `actions.create` / `actions.delete` で**1ページに複数フォーム**
+- 入力ミスは `fail(422, ...)`、未ログインは `redirect(303, ...)`、権限なしは `error(403, ...)`
+- 保存処理は `$lib/server/` に置けば、**DBへの差しかえも画面ノータッチ**
+
+## 今はここだけでOK
+
+> **「`hooks` で受付 → `+layout.server.ts` で守り → `+page.server.ts` で `actions` → `+page.svelte` で見せる」**
+
+この4段の流れを覚えれば、**ログイン付き管理画面のほとんど**が作れます。
+
+## 次に作る小さな練習
+
+- 上の5ファイル構成を、**何も見ずに紙に書く**（フォルダの入れ子だけでもOK）
+- 「**`hooks.server.ts` → `+layout.server.ts` → `+page.server.ts` → `+page.svelte`**」の順番を**声に出して読む**
+- 「**未ログインなら redirect、権限なしなら error、入力ミスなら fail**」を1行ずつメモする
+- [Todo server版](/docs/examples/todo-server) の `+page.server.ts` と、このページの `+page.server.ts` を**並べて見比べる**（違いは「**追加するフィールドがタイトル＋本文**」「**守衛が `+layout.server.ts` にいる**」だけ）
+- 自分のサイトを作るなら、`/admin/` 配下に何のページが要るか（投稿・ユーザー管理・売上など）を**箇条書きにする**
+- 「画像アップロード」を足すならどう変えるかを、`Notice` 型と `actions.create` の差分として**頭の中で書く**

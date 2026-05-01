@@ -1,0 +1,245 @@
+---
+title: error と redirect は「止める・案内する」
+name: error / redirect
+description: ページが見つからないときの error()、別ページへ送りたいときの redirect()、フォームエラー時の fail() を、まとめて使い分けます。notice-board の error(404) と Todo server版の fail(422) を実例で回収します。
+category: SvelteKit 実践基本
+order: 40
+---
+
+`error()` と `redirect()` は、ひとことで言うと
+
+> **`error()`** … 「**ここで止めて、エラーページを出す**」
+> **`redirect()`** … 「**ここではなく、別のページへ案内する**」
+
+です。
+さらに、フォームのバリデーションで使う **`fail()`** とあわせて、**3つの「ページの止め方／流し方」**を整理します。
+
+## たとえ話：受付の人の動き
+
+サイトを**ホテル**にたとえると、`load` の中でやっていることは**部屋の前で受付の人がチェックする動き**です。
+
+| たとえ | どう動く？ |
+| --- | --- |
+| **error** | 「**この部屋は存在しません**」「**入れません**」と札を出して**止める** |
+| **redirect** | 「**この部屋ではなく、あちらの受付へ行ってください**」と**案内する** |
+| **fail** | フォームの記入ミスを見て「**ここを直してまた出してください**」と**戻す**（後述） |
+
+「**止める / 別へ送る / 戻して直してもらう**」——この3つの動きを覚えておけば、実務でほぼ迷いません。
+
+## error() は何？
+
+「**そもそもこのページは出せない**」というときに使います。
+
+```ts
+import { error } from '@sveltejs/kit';
+
+export function load() {
+	error(404, 'ページが見つかりません');
+}
+```
+
+### これは何をしているか
+
+- `import { error } from '@sveltejs/kit'` … SvelteKit から `error` を借りる
+- `error(404, '...')` … **404 番のエラー**（見つからない）として**ページを止める**
+- `load` のあとが続かなくなるので、**`return` も書かなくて良い**
+
+> 数字（**ステータスコード**）の意味は、おおまかに：
+> **404**＝**見つからない** / **403**＝**権限がない** / **401**＝**ログインが必要** / **500**＝**サーバー側の不具合**
+> 最初は **404** だけ覚えておけばOKです。
+
+> 古いコードでは `throw error(404, '...')` と **`throw` を付けて**書かれていることがあります。
+> 結果は**同じ**です（どちらでも動く）。
+
+## notice-board で使った error(404) を読みなおす
+
+[お知らせ一覧](/docs/examples/notice-board) の[詳細ページの load](/docs/sveltekit/load) では、こう書きました。
+
+```ts
+// src/routes/notices/[slug]/+page.server.ts
+import { error } from '@sveltejs/kit';
+import { getNoticeBySlug } from '$lib/server/notices';
+
+export function load({ params }) {
+	const notice = getNoticeBySlug(params.slug);
+
+	if (!notice) {
+		error(404, 'お知らせが見つかりません');
+	}
+
+	return { notice };
+}
+```
+
+### これは何をしているか
+
+- `params.slug` … URL の[`[slug]`](/docs/sveltekit/dynamic-routes)に入っている文字
+- `getNoticeBySlug(params.slug)` … 保存場所から **slug にあう1件**を取りだす
+- 見つからなかったら **`error(404, '...')`** で**詳細ページを出さずに止める**
+- 見つかれば `return { notice }` で詳細データを渡す
+
+たとえば `/notices/zzz` のような**ありえない URL**でアクセスされたとき、**真っ白な画面**ではなく**ちゃんと404ページを出す**——これが `error()` の役割です。
+
+> `+error.svelte` を `routes/` に置いておくと、**サイト全体で同じ見た目の404ページ**を出せます。
+> 各ルートに専用の `+error.svelte` を置いて、**「お知らせ専用の見つかりません画面」**を作ることも可能です。
+
+## redirect() は何？
+
+「**このページではなく、別のページへ送りたい**」ときに使います。
+
+```ts
+import { redirect } from '@sveltejs/kit';
+
+export function load() {
+	redirect(307, '/login');
+}
+```
+
+### これは何をしているか
+
+- `import { redirect } from '@sveltejs/kit'` … SvelteKit から `redirect` を借りる
+- `redirect(307, '/login')` … **このページを見せずに `/login` へ移動**する
+- 数字は**何の理由で**移動するか（ステータスコード）
+
+主な使いどころ：
+
+- **未ログインの人を `/login` へ送る**（次の見出しでくわしく）
+- **古いURLから新しいURLへ移す**（`/old/path` → `/new/path`）
+- **ログイン済みの人をマイページへ送る**（`/login` を開いたら `/account` へ）
+
+> 古いコードでは `throw redirect(...)` と書かれていることがあります。これも**同じ**です。
+
+## ログインが必要なページの例
+
+会員ページや管理画面では、**未ログインの人を `/login` へ案内**するのが定番です。
+
+```ts
+// 例：会員ページの +page.server.ts
+import { redirect } from '@sveltejs/kit';
+
+export function load({ locals }) {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	return {
+		user: locals.user
+	};
+}
+```
+
+### これは何をしているか
+
+- `locals` … **「いまアクセスしている人の情報」**などを入れておく置き場
+- `locals.user` … いまログイン中のユーザー（`hooks.server.ts` などで事前に詰める）
+- `if (!locals.user)` … **ログインしていない**なら
+- `redirect(303, '/login')` … **`/login` ページへ案内**する
+- ログインしていれば、そのままユーザー情報を返してページ表示
+
+> `locals` の中身は、SvelteKit が**自動で入れてくれるわけではありません**。
+> 別の章で扱う **`hooks.server.ts`**（入口の受付係）で、**Cookie からユーザー情報を読んで `locals.user` に入れる**のが定番です。
+> 今は **「ログイン情報の置き場として使う」** くらいで覚えておけばOK。
+
+## error と redirect の違い
+
+| | **error** | **redirect** |
+| --- | --- | --- |
+| **目的** | **止める** | **別ページへ案内する** |
+| **どこで使う？** | `load` の中、`+server.ts` の中、`actions` の中 | 同じ（`load` / `+server.ts` / `actions`） |
+| **使う数字** | **4xx / 5xx**（404・401・403・500 など） | **3xx**（303・307・308 など） |
+| **例** | 存在しない記事、権限なし、ログイン必須なのに未ログイン | ログインページへ案内、古いURL→新URL、フォーム送信後の完了画面 |
+| **画面の表示** | エラーページ（`+error.svelte`） | 移動先ページ |
+
+> 「**そもそも見せない**」のが `error`、「**他へ送る**」のが `redirect`、と区別します。
+
+## fail() との違い
+
+[Todo server版](/docs/examples/todo-server) で出てきた `fail()` も並べて整理します。
+
+```ts
+// 例：Todo server版の +page.server.ts より
+import { fail } from '@sveltejs/kit';
+
+export const actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const description = String(data.get('description') ?? '').trim();
+
+		if (description === '') {
+			return fail(422, { error: 'やることを入力してください' });
+		}
+		// ...
+	}
+};
+```
+
+3つを並べると、こうなります。
+
+| | **fail** | **error** | **redirect** |
+| --- | --- | --- | --- |
+| **どこで使う？** | **`actions` の中だけ**（フォームの返事） | `load` / `actions` / `+server.ts` | 同じ |
+| **目的** | **同じページに戻す**（入力エラーを見せる） | **止める**（エラーページ） | **別ページへ案内** |
+| **書き方** | `return fail(422, { error })` | `error(404, '...')` | `redirect(303, '/login')` |
+| **代表的な数字** | **422**（記入ミス） | **404 / 401 / 403** | **303 / 307 / 308** |
+| **例** | Todo が空、メール形式が違う | 記事が存在しない | ログイン必須ページから `/login` へ |
+
+ひとことで言うと：
+
+> **`fail`** … 「**戻して、直してもらう**」
+> **`error`** … 「**ここで止める**」
+> **`redirect`** … 「**別へ送る**」
+
+3つとも、ユーザーを**白い画面**や**エラー画面**のままにせず、「**次にどうすればいいか**」を伝えるための道具です。
+
+## よく使うステータスコード（最低限）
+
+最初はこれだけ覚えておけば実務でほぼ困りません。
+
+| 番号 | 意味 | よく使う場面 |
+| --- | --- | --- |
+| **303** See Other | 「別の場所を見て」 | **フォーム送信後**の画面遷移の定番 |
+| **307** Temporary Redirect | 「一時的に別へ」 | キャンペーン期間だけ別ページに送るなど |
+| **308** Permanent Redirect | 「ずっと別へ」 | URL を引っ越したとき |
+| **401** Unauthorized | 「ログインが必要」 | ログインなしで API を叩かれたとき |
+| **403** Forbidden | 「権限がない」 | 一般ユーザーが管理画面にアクセス |
+| **404** Not Found | 「見つからない」 | 記事や商品が存在しない |
+| **422** Unprocessable Entity | 「内容がよくない」 | フォームのバリデーションエラー |
+| **500** Internal Server Error | 「サーバー側の不具合」 | 予想外のエラー |
+
+> 迷ったら **404 / 303 / 422** の3つだけ覚えればOK。
+> ログインが絡むようになったら **401 / 403** を足せば実務はだいぶカバーできます。
+
+## 実務では何に使う？
+
+`error / redirect / fail` は、**毎日のように使う**3点セットです。
+
+- **お知らせ詳細が存在しない** … `error(404, ...)`（[notice-board](/docs/examples/notice-board) で実演）
+- **会員限定ページ** … `if (!locals.user) redirect(303, '/login')`
+- **管理画面** … `if (!locals.user?.isAdmin) error(403, '権限がありません')`
+- **古いURLから新しいURLへ** … `redirect(308, '/new-path')`
+- **フォーム送信後の完了ページ** … `actions` の中で `redirect(303, '/thanks')`
+- **ログイン済みユーザーをマイページへ** … `/login` の load で `if (locals.user) redirect(303, '/account')`
+- **入力フォームのバリデーション** … `fail(422, { error: '...' })`（[Todo server版](/docs/examples/todo-server) で実演）
+- **「読み込み中／失敗／空／データ」の error 状態** … 表示側は [4状態UI](/docs/patterns/loading-error) で受ける
+
+## 今日のまとめ
+
+- **`error()`** … ページを**止める**（4xx / 5xx の番号）
+- **`redirect()`** … 別のページへ**案内する**（3xx の番号）
+- **`fail()`** … `actions` の中で**同じページに戻す**（フォームのバリデーション用）
+- 古いコードでは `throw error(...)` のように `throw` 付きで書かれることもある（**結果は同じ**）
+- 迷ったら **404 / 303 / 422** の3つだけ覚えればOK
+
+## 今はここだけでOK
+
+> **「止める → `error`」「別へ → `redirect`」「戻して直す → `fail`」**
+
+このひとことだけで、ほとんどの場面で迷わずに書けます。
+
+## 次に作る小さな練習
+
+- [お知らせ一覧](/docs/examples/notice-board) の `[slug]/+page.server.ts` を読み返して、**`error(404, '...')`** がどこで効いているか指でなぞる
+- 仮に `/admin` ページを作るとして、**未ログイン時に `/login` へ送るコード**を紙に書いてみる（答えは上の例にあります）
+- **`fail` / `error` / `redirect`** の違いを **1行ずつ**自分の言葉でメモする
+- [Todo server版](/docs/examples/todo-server) の `actions.create` で、Todoを**正しく追加できたあと**に `redirect(303, '/todos')` を入れたらどうなるか考えてみる（**送信後の完了ページ**パターン）
+- 4状態UI の章（[loading / error](/docs/patterns/loading-error)）と組み合わせて、「**サーバー側で `error()`、画面側でやさしく見せる**」流れを思い描く

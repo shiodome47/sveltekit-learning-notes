@@ -1,0 +1,329 @@
+---
+title: Result型は「成功と失敗を分ける箱」
+name: Result型
+description: Union / Literal / Generics / 型ガードの集大成。処理の結果を「成功」か「失敗」のどちらかとして、安全に表す Result<T, E> のパターンを、SvelteKit実務で使う形で覚えます。
+category: TypeScript 実践基本
+order: 90
+---
+
+## ひとことで言うと
+
+`Result` 型は、ひとことで言うと
+
+> **「処理の結果を、『成功』か『失敗』のどちらかとして安全に表す型」**
+
+です。
+これまで学んだ [Union / Literal](/docs/typescript/union-literal)・[Generics](/docs/typescript/generics)・[型ガード](/docs/typescript/type-guard) の**合わせ技**で、**try / throw に頼らないエラーハンドリング**ができるようになります。
+
+## たとえ話：荷物の配達
+
+宅配便にたとえると：
+
+| たとえ | コード |
+| --- | --- |
+| 「荷物が届きました」 | `{ ok: true, data: ... }` |
+| 「住所が違いました」「荷物が壊れました」 | `{ ok: false, error: ... }` |
+| 配達結果の**伝票** | `Result<T, E>` |
+
+「**成功の箱と、失敗の箱を、最初から分けて持つ**」——これが Result 型の発想です。
+
+## なぜ Result 型があるの？
+
+`try` / `catch` / `throw` だけでも、もちろんサイトは作れます。
+でも、
+
+- **どこで失敗するか**がコードを読まないとわからない
+- **失敗の見落とし**が起きやすい
+- 失敗は型に**現れない**（戻り値の型は成功の形だけ）
+
+——という弱点があります。
+
+Result 型を使うと：
+
+- **戻り値の型を見ただけ**で「**失敗するかもしれない**」とわかる
+- 呼び出し側で **`if (result.ok)`** と書かないと **`data` を読めない**ので、見落としが起きにくい
+- 失敗の理由を**そのまま型で扱える**
+
+> ただし、**Result 型がいつでも正解**というわけではありません。
+> SvelteKit の **`error()` / `redirect()` / `fail()`** とどう使い分けるかは、後ほど整理します。
+
+## 最小の Result 型
+
+定義はとても短いです。
+
+```ts
+type Result<T, E> =
+	| { ok: true; data: T }
+	| { ok: false; error: E };
+```
+
+### これは何をしているか
+
+- **`T`** は**成功したときのデータの型**（→ [Generics](/docs/typescript/generics)）
+- **`E`** は**失敗したときのエラーの型**
+- `ok: true` のときだけ `data` を持つ
+- `ok: false` のときだけ `error` を持つ
+- 上の型は [Union / Literal](/docs/typescript/union-literal) の**`true` と `false` の Literal で分岐する** discriminated union
+
+> 「**`ok` という札で、成功か失敗かが必ずわかる**」——これが Result の本質です。
+
+## まずは文字列エラーで使う
+
+短い例：タイトルを安全に検証する関数。
+
+```ts
+function parseTitle(value: unknown): Result<string, string> {
+	if (typeof value !== 'string') {
+		return { ok: false, error: 'タイトルは文字である必要があります' };
+	}
+
+	if (value.trim() === '') {
+		return { ok: false, error: 'タイトルは空にできません' };
+	}
+
+	return { ok: true, data: value };
+}
+```
+
+### これは何をしているか
+
+- 引数 `value` は `unknown`（[型ガード](/docs/typescript/type-guard) で扱った安全な受け取り）
+- 文字でなければ **`{ ok: false, error: '...' }`** で返す
+- 空文字なら同じく失敗で返す
+- 通れば **`{ ok: true, data: value }`** で返す
+- **`throw` を1回も使っていない**——失敗を**戻り値**として扱える
+
+## ok で安全に分岐する
+
+呼び出し側はこう書きます。
+
+```ts
+const result = parseTitle('防災訓練のお知らせ');
+
+if (result.ok) {
+	console.log(result.data);
+} else {
+	console.log(result.error);
+}
+```
+
+### これは何をしているか
+
+- `result.ok` が **`true`** の枝では、TypeScript が `result.data` を**安全に読める**と判断
+- `false` の枝では `result.error` が**安全に読める**
+- **`data` と `error` を取り違える**ことがない（型で守られる）
+
+> [Union / Literal](/docs/typescript/union-literal) で出てきた **「`{#if}` と Union の相性」** が、ここでも効きます。
+> `if (result.ok)` の中では `result` が「**成功の枝**」に絞り込まれるので、安全に `data` が取れます。
+
+## API レスポンスで使う
+
+[APIレスポンス](/docs/typescript/api-response) と [型ガード](/docs/typescript/type-guard) を合わせると、**実務級の安全な fetch 関数**が作れます。
+
+```ts
+type Notice = {
+	slug: string;
+	title: string;
+};
+
+type AppError = {
+	message: string;
+	status?: number;
+};
+
+async function fetchNotice(slug: string): Promise<Result<Notice, AppError>> {
+	try {
+		const res = await fetch(`/api/notices/${slug}`);
+
+		if (!res.ok) {
+			return {
+				ok: false,
+				error: {
+					message: 'お知らせを取得できませんでした',
+					status: res.status
+				}
+			};
+		}
+
+		const data: unknown = await res.json();
+
+		if (!isNotice(data)) {
+			return {
+				ok: false,
+				error: { message: 'お知らせデータの形が違います' }
+			};
+		}
+
+		return { ok: true, data };
+	} catch (e: unknown) {
+		return {
+			ok: false,
+			error: {
+				message: e instanceof Error ? e.message : '不明なエラーです'
+			}
+		};
+	}
+}
+```
+
+### これは何をしているか
+
+- 戻り値の型 `Promise<Result<Notice, AppError>>` … 「**Notice か、AppError のどちらかが返ってくる**」と一目でわかる
+- HTTP エラー → `error` の **`message` と `status`** で返す
+- 形が違う → 別の `error` で返す（`isNotice` は [型ガード](/docs/typescript/type-guard) 章のもの）
+- 通信失敗 → `e instanceof Error` で安全に `message` を取り出す
+- **3種類の失敗**を**全部同じ Result 型**で受けられる
+
+> `isNotice(data)` は前章で書いたカスタム型ガード。`data` が本当に `Notice` の形か実行時に確認してくれます。
+
+## Svelte の画面で使う
+
+呼び出し側の `+page.svelte` では、[`{#if}`](/docs/svelte/if) で**1度の分岐**で完了します。
+
+```svelte
+<script lang="ts">
+	let { data } = $props();
+	const result = data.notice;
+</script>
+
+{#if result.ok}
+	<article>
+		<h1>{result.data.title}</h1>
+	</article>
+{:else}
+	<p class="error">{result.error.message}</p>
+{/if}
+```
+
+```css
+.error {
+	color: tomato;
+}
+```
+
+### これは何をしているか
+
+- `result.ok` が真 → 成功表示
+- 偽 → エラーメッセージ
+- [class / style](/docs/svelte/class-style) で見た目を整える
+- [4状態UI](/docs/patterns/loading-error) の `loading / error / empty / data` のうち、**`error` と `data` の2状態**にきれいに対応する
+
+> 「**API失敗を画面で必ず見せる**」型に自然となるので、**真っ白画面**を防げます。
+
+## throw / try-catch と Result の使い分け
+
+| | **throw / try-catch** | **Result 型** |
+| --- | --- | --- |
+| **向いている場面** | **予想外の失敗**・例外的状況 | **失敗が普通に起こりうる**処理 |
+| **書き方** | 失敗時に `throw new Error(...)` | 失敗時に `{ ok: false, error: ... }` |
+| **呼び出し側** | `try { ... } catch (e) { ... }` でまとめて受ける | `if (result.ok) { ... } else { ... }` で分岐 |
+| **例** | DB が予期せず落ちた / バグ | 入力ミス / API 失敗 / 形違い / 外部データ検証 |
+| **型に現れる？** | 現れない（戻り値は成功の型） | **現れる**（`Result<T, E>`） |
+| **SvelteKit との相性** | `error(404, ...)` / `redirect(...)` で**自動回送** | `+page.svelte` で**自分で表示**する |
+
+> ひとことで言うと：
+> **「予想外なら `throw`、起こりそうなら `Result`」**。
+
+実務ではどちらも使います。**お守り**として `try / catch` で**最終防衛**しつつ、**入力検証や API 取得は `Result`** で書く——これが安心な書き分けです。
+
+## SvelteKit ではどこで使う？
+
+`Result` 型はどこに置いても便利ですが、**特に効く場所**を整理します。
+
+| 場面 | おすすめ |
+| --- | --- |
+| **`$lib/server/` の保存処理** | `createNotice` が `Result<Notice, AppError>` を返す |
+| **API 取得ヘルパー** | `fetchJson<T>` を `Result` 化（→ [Generics](/docs/typescript/generics) の応用） |
+| **フォームの事前検証** | `parseTitle` のような関数で集約 |
+| **外部 API 連携** | 形違いやネット失敗を**漏れなく**扱う |
+| **localStorage の復元** | `JSON.parse` 失敗・形違いを `Result` で返す |
+| **Webhook 受信** | 署名検証・形違いの2種類を `Result` で |
+
+### form actions ではどうする？
+
+[form actions](/docs/sveltekit/form-actions) のバリデーションは **`fail(422, { error })`** が定番です（→ [error / redirect](/docs/sveltekit/error-redirect)）。
+
+```ts
+// +page.server.ts の actions の中
+import { fail } from '@sveltejs/kit';
+import { parseTitle } from '$lib/server/validation';
+
+export const actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const result = parseTitle(data.get('title'));
+
+		if (!result.ok) {
+			return fail(422, { error: result.error });
+		}
+
+		// 通れば result.data は string として安全に使える
+		// ...
+	}
+};
+```
+
+### これは何をしているか
+
+- バリデーションの**ロジックは `parseTitle`**（`Result` を返す純粋関数）
+- `actions` は `result.ok` で分岐して **`fail` を呼ぶだけ**
+- バリデーション**本体**は別ファイル（`$lib/server/validation.ts`）に置けば**テストしやすい**
+- [お知らせ管理画面](/docs/examples/admin-board) の `actions.create` を、こうリファクタリングできる
+
+> **「Result でバリデーション → ok なら実行、ok でなければ fail」** が SvelteKit 実務の鉄板パターンです。
+
+## 使いすぎ注意
+
+`Result` 型はパワフルですが、**何でも Result にすると逆に読みにくく**なります。
+
+| 状況 | おすすめ |
+| --- | --- |
+| 入力検証・API 取得・形チェック | **Result が向いている** |
+| **必ず成功する**ような単純な計算 | **Result 不要**（普通の戻り値で十分） |
+| バグや予想外のエラー | **`throw`**（最終防衛） |
+| `error(404)` で十分なページ表示 | **SvelteKit 標準で OK** |
+| チームに合わせた方が良い | **チームの方針に従う** |
+
+> ひとことで言うと：「**失敗が予想できる処理にだけ Result を使う**」。
+> 学び始めは **「読めるようになるだけ**」でも十分価値があります。
+
+## 既存記事との接続（集大成）
+
+このページは、TypeScript 実践基本セクションの**集大成**です。
+
+| 章 | このページでの使われ方 |
+| --- | --- |
+| [Union / Literal](/docs/typescript/union-literal) | `{ ok: true } \| { ok: false }` の **discriminated union** |
+| [Generics](/docs/typescript/generics) | `Result<T, E>` の `T` と `E` |
+| [型ガード](/docs/typescript/type-guard) | `unknown` を絞り込んで Result に詰める / `e instanceof Error` |
+| [APIレスポンス](/docs/typescript/api-response) | `fetchNotice` の `Promise<Result<...>>` |
+| [4状態UI](/docs/patterns/loading-error) | `result.ok` の2分岐は、4状態UIの `error` / `data` に対応 |
+| [form actions](/docs/sveltekit/form-actions) | `Result` でバリデ → `ok` なら実行 / だめなら `fail` |
+| [error / redirect](/docs/sveltekit/error-redirect) | `Result` と `error()` / `redirect()` の使い分け |
+| [お知らせ管理画面](/docs/examples/admin-board) | `actions.create` を Result 化したリファクタの題材 |
+
+「**今までの章ぜんぶ**」が1ページに合流する、サイトの**TypeScript の最終章**です。
+
+## 今日のまとめ
+
+- `Result<T, E>` は「**成功と失敗を分ける箱**」
+- **`{ ok: true; data: T } | { ok: false; error: E }`** の**たった3行**で定義できる
+- `if (result.ok)` で**安全に分岐**できる（discriminated union の力）
+- `throw` の代わりではなく、**選択肢のひとつ**
+- **入力検証・API 取得・形チェック**で特に効く
+- SvelteKit の `error()` / `redirect()` / `fail()` と**併用**するのが実務感覚
+
+## 今はここだけでOK
+
+> **「失敗が予想できる処理は、`{ ok, data | error }` で返すと型で守れる」**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- `type Result<T, E> = { ok: true; data: T } | { ok: false; error: E }` を**何も見ずに書く**
+- `parseTitle(value: unknown): Result<string, string>` を**白紙で書く**（3つの分岐：`unknown`チェック → 空文字チェック → 成功）
+- `result.ok` を `if` で確認して、`data` か `error` を**取り違えずに**読む
+- `fetchNotice(slug)` の流れを**紙に書く**（HTTP失敗 / 形違い / 通信失敗 の3種類のエラー）
+- [お知らせ管理画面](/docs/examples/admin-board) の `actions.create` を、`parseTitle` を使った Result 版に**頭の中でリファクタ**してみる
+- バリデーション関数を `$lib/server/validation.ts` に切り出して、**テストしやすい形**にする想像をする

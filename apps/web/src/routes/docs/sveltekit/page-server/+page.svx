@@ -1,0 +1,277 @@
+---
+title: +page.server.ts と +page.ts の違い
+name: +page.server.ts：サーバー側
+description: load コードを「どこに置くか」をはっきり判断できるページ。+page.svelte / +page.server.ts / +page.ts の3者を実例で整理し、Todo server版・notice-board の +page.server.ts を回収します。
+category: SvelteKit 実践基本
+order: 25
+---
+
+`+page.server.ts` と `+page.ts` の違いは、ひとことで言うと
+
+> **`+page.server.ts`** … 「**サーバーだけで動く**材料集め」
+> **`+page.ts`** … 「**サーバーでもブラウザでも動く**材料集め」
+
+です。
+
+## たとえ話：レストランの厨房と客席
+
+サイトを**レストラン**にたとえると、3つのファイルはこういう役割です。
+
+| ファイル | たとえ |
+| --- | --- |
+| **`+page.svelte`** | **料理をお皿に盛る人**（お客さんに見せる係） |
+| **`+page.server.ts`** | **厨房の中だけで材料を準備する人**（お客さんから見えない） |
+| **`+page.ts`** | **厨房でも客席でも動ける準備係**（どっちでも材料を取りに行ける） |
+
+「**厨房の中**」と「**お客さんから見える場所**」を分けるのが、SvelteKit の考え方です。
+DB・Cookie・秘密鍵などは、**お客さんに見せたくない厨房の中だけ**で扱います。
+
+## まず3つのファイルを整理する
+
+| ファイル | 役割 | 動く場所 | よく書く例 |
+| --- | --- | --- | --- |
+| **`+page.svelte`** | **画面**を表示する | ブラウザ中心 | HTML、ボタン、一覧、入力欄 |
+| **`+page.server.ts`** | **サーバー側**でデータを準備する | **サーバーだけ** | DBから読む、秘密情報、Cookie、`form actions` |
+| **`+page.ts`** | サーバーでもブラウザでも使える `load` | **両方** | 公開APIから取る、秘密を使わないデータ取得 |
+
+> ポイントは、`+page.server.ts` のコードは **絶対にブラウザに渡らない**こと。
+> 秘密のキーや DB 接続コードを書いても安全です。
+
+## +page.server.ts を使う場面
+
+「**ブラウザに見せたら困るもの**」が出てきたら、迷わずこちら。
+
+- **DB にアクセスする** … Postgres / MySQL / SQLite など
+- **API キーや秘密情報を使う** … `.env` の `SECRET_API_KEY` など
+- **Cookie を読む** … セッション、ログイン、設定
+- **ログイン情報を見る** … `locals.user` のチェック
+- **`form actions` を書く** … フォーム送信の受付係（→ [form actions](/docs/sveltekit/form-actions)）
+- **`$lib/server` のコードを使う** … サーバー専用の保存処理
+- **ブラウザに見せたくない処理** … 計算、整形、フィルタ
+
+> このサイトの[Todo server版](/docs/examples/todo-server)も[お知らせ一覧](/docs/examples/notice-board)も、**全部 `+page.server.ts` で書いています**。
+
+## +page.ts を使う場面
+
+「**秘密情報を使わないデータ取得**」のときに候補になります。
+
+- **公開API**（誰でもアクセスできる）から取得
+- **ブラウザ側のページ遷移でも、サーバーを経由せず再取得したい**
+- **計算結果を毎回作りなおす**（純粋にクライアント側で処理できる）
+
+> 初心者の方は、**最初は `+page.server.ts` だけ覚えればOK**です。
+> `+page.ts` の出番は「サイトに慣れてから」。
+
+## 迷ったらどっち？
+
+> **迷ったら `+page.server.ts` でOK。**
+> 特に、**DB / Cookie / ログイン / フォーム / 秘密情報**が出てきたら**必ず**こちら。
+>
+> **公開APIだけ**を読むなら `+page.ts` も候補になります。
+
+「秘密のものが1つでも絡む？」を判断軸にすると、**99% 迷いません**。
+
+## Todo server版とのつながり
+
+[Todo server版](/docs/examples/todo-server) の `+page.server.ts` を読みなおしてみます。
+
+```ts
+// src/routes/todos/+page.server.ts
+import { fail } from '@sveltejs/kit';
+import { createTodo, deleteTodo, getTodos } from '$lib/server/todos';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return { todos: getTodos() };
+};
+
+export const actions: Actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const description = String(data.get('description') ?? '').trim();
+		if (description === '') {
+			return fail(422, { error: 'やることを入力してください' });
+		}
+		createTodo(description);
+		return { ok: true };
+	},
+	delete: async ({ request }) => {
+		const data = await request.formData();
+		const id = Number(data.get('id'));
+		deleteTodo(id);
+		return { ok: true };
+	}
+};
+```
+
+### これは何をしているか
+
+- **同じファイルに `load` と `actions` の両方**が入っている
+- `load` … 一覧を読みだす（→ [load](/docs/sveltekit/load)）
+- `actions.create` / `actions.delete` … フォーム送信の受付係（→ [form actions](/docs/sveltekit/form-actions)）
+- `$lib/server/todos` … サーバー専用の保存処理
+
+> 「**`form actions` を使うなら、ファイルは `+page.server.ts`**」というのが大原則。
+> Todo server版が `+page.server.ts` 一択になっていた理由はここです。
+
+## notice-board とのつながり
+
+[お知らせ一覧](/docs/examples/notice-board) でも、**一覧の load** と **詳細の load** が**両方とも `+page.server.ts`** に置かれていました。
+
+```ts
+// src/routes/notices/+page.server.ts（一覧）
+import { getNoticeSummaries } from '$lib/server/notices';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return { notices: getNoticeSummaries() };
+};
+```
+
+```ts
+// src/routes/notices/[slug]/+page.server.ts（詳細）
+import { error } from '@sveltejs/kit';
+import { getNoticeBySlug } from '$lib/server/notices';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ params }) => {
+	const notice = getNoticeBySlug(params.slug);
+	if (!notice) {
+		error(404, 'お知らせが見つかりません');
+	}
+	return { notice };
+};
+```
+
+### これは何をしているか
+
+- どちらも **`$lib/server/notices` を使っている** → サーバー専用処理 → `+page.server.ts` 一択
+- `[slug]` で URL の一部を受けとる（→ [動的ルート](/docs/sveltekit/dynamic-routes)）
+- 詳細では **`error(404, ...)`** で見つからないときに止める（→ [error / redirect](/docs/sveltekit/error-redirect)）
+
+> **`$lib/server/` を使う＝必ず `+page.server.ts`**——この対応は覚えやすいルールです。
+
+## $lib/server との関係
+
+`$lib/server/` は、SvelteKit が用意してくれた **「ブラウザに渡したくないコード置き場」** です。
+
+| 置き場所 | ブラウザに渡る？ | よく置くもの |
+| --- | --- | --- |
+| `$lib/` | **渡る**（ブラウザでも import される可能性あり） | 共通の Svelte コンポーネント、ユーティリティ |
+| `$lib/server/` | **絶対に渡らない**（ビルド時に弾かれる） | DB 接続、秘密キー、サーバー専用ロジック |
+
+> SvelteKit は「**`$lib/server/` をブラウザ向けコードからインポート**」しようとすると、**ビルドエラー**で教えてくれます。
+> つまり「**`$lib/server/` を使うコードは、必然的に `+page.server.ts` か `+server.ts` か `hooks.server.ts`**」のいずれかになります。
+
+## 小さなコード例
+
+`+page.server.ts` ＋ `+page.svelte` の一番シンプルな組み合わせです。
+
+```ts
+// src/routes/+page.server.ts
+import { getTodos } from '$lib/server/todos';
+
+export function load() {
+	return {
+		todos: getTodos()
+	};
+}
+```
+
+```svelte
+<!-- src/routes/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<ul>
+	{#each data.todos as todo (todo.id)}
+		<li>{todo.text}</li>
+	{/each}
+</ul>
+```
+
+### これは何をしているか
+
+- `load` の戻りが **`data`** として `+page.svelte` に渡る
+- `data.todos` を [`{#each}`](/docs/svelte/each) で並べる
+- サーバー側で取った値を、画面側は**そのまま並べるだけ**
+
+> 「**取る側（サーバー）と表示する側（画面）が、同じフォルダの2ファイルで分かれる**」のが SvelteKit の気持ちいいところです。
+
+## +page.ts の小さな例
+
+公開APIから取る場合は、`+page.ts` が候補になります。
+
+```ts
+// src/routes/weather/+page.ts
+import type { PageLoad } from './$types';
+
+export const load: PageLoad = async ({ fetch }) => {
+	const res = await fetch('https://api.example.com/weather');
+	const weather = await res.json();
+	return { weather };
+};
+```
+
+### これは何をしているか
+
+- 拡張子が **`.server.` ではない** → サーバーでもブラウザでも動く
+- `{ fetch }` … SvelteKit が用意してくれた**特別な fetch**（サーバー側でも動く）
+- 公開API なので**秘密情報なし** → `+page.ts` でOK
+
+> 同じことを `+page.server.ts` で書いても問題なく動きます。
+> 「**サーバー経由のほうが安心**」「**API キーを将来追加するかも**」と思ったら、迷わず `+page.server.ts` を選びましょう。
+
+## 実務では何に使う？
+
+**`+page.server.ts` 中心**で、9割以上のページが書けます。
+
+- **お知らせ一覧** … `+page.server.ts` で `getNotices()`
+- **管理画面** … `+page.server.ts` で `locals.user` をチェックしてから取得
+- **会員ページ** … `+page.server.ts` で**未ログイン → `redirect('/login')`**（→ [error / redirect](/docs/sveltekit/error-redirect)）
+- **投稿フォーム** … `+page.server.ts` の `actions` で受付
+- **DB から一覧** … `+page.server.ts` で SQL を投げる
+- **ログイン中ユーザーの確認** … `+page.server.ts` で `locals.user`
+- **サーバー側バリデーション** … `+page.server.ts` の `actions` で `fail(422, ...)`
+
+`+page.ts` は、**公開API・公開計算・キャッシュ最適化**などピンポイントで使う道具です。
+
+## よくある判断表
+
+| やりたいこと | どこに書く？ |
+| --- | --- |
+| **DB を読む** | `+page.server.ts` |
+| **Cookie を見る** | `+page.server.ts` |
+| **`form actions` を書く** | **`+page.server.ts` 一択** |
+| **秘密 API キーを使う** | `+page.server.ts` |
+| **`$lib/server/` を使う** | `+page.server.ts` |
+| **公開API を読む** | `+page.ts`（または `+page.server.ts` でもOK） |
+| **画面を表示する** | `+page.svelte` |
+| **ボタンや入力欄を書く** | `+page.svelte` |
+| **`bind:value` や `$state` を書く** | `+page.svelte` |
+
+> **「秘密のものが絡んだら `+page.server.ts`」**——これだけで実務はだいたい片付きます。
+
+## 今日のまとめ
+
+- **`+page.svelte`** … **画面**（ブラウザ中心）
+- **`+page.server.ts`** … **サーバー専用の `load` と `actions`**（DB・Cookie・秘密・フォーム）
+- **`+page.ts`** … **両方で動く `load`**（公開APIなど）
+- **迷ったら `+page.server.ts`**。`form actions` を書くならこれ一択
+- **`$lib/server/`** を使う ＝ **必ず `+page.server.ts`**（または `+server.ts` / `hooks.server.ts`）
+
+## 今はここだけでOK
+
+> **「秘密のものが絡んだら `+page.server.ts`」**
+
+このひとことで、**load コードの置き場所**は9割迷わなくなります。
+
+## 次に作る小さな練習
+
+- [Todo server版](/docs/examples/todo-server) の `+page.server.ts` を読み返して、**`load` と `actions` がどう同居しているか**を指でなぞる
+- [お知らせ一覧](/docs/examples/notice-board) の `+page.server.ts`（一覧）と `[slug]/+page.server.ts`（詳細）を**並べて見比べる**
+- 各ファイルについて「**これはサーバー側に置く理由があるか？**」を1行ずつメモする
+  （ヒント：`$lib/server/` を import している？ `actions` を書いている？ → どちらかなら `+page.server.ts` 一択）
+- 仮に「外部の天気APIを叩いて画面に出す」なら `+page.ts` か `+page.server.ts` か——**自分で答えを決めてからコードを書く**練習をする
+- [`load`](/docs/sveltekit/load)・[`form actions`](/docs/sveltekit/form-actions)・[`error / redirect`](/docs/sveltekit/error-redirect) の3章を、**「全部 `+page.server.ts` の話だった」**と気づきながら読み返す

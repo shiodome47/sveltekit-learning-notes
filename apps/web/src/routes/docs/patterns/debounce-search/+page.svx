@@ -1,0 +1,355 @@
+---
+title: debounce検索を作ろう
+name: debounce検索
+description: 検索欄に入力するたびに毎回APIを叩くのではなく、少し待ってから検索する実務パターン。$effect の cleanup を「タイマーの予約取り消し」として使い、search-list / api-routes / 4状態UI / Result型 をつなぎます。
+category: 実務パターン集
+order: 30
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import DebounceSearchDemo from './_DebounceSearchDemo.svelte';
+	import demoSource from './_DebounceSearchDemo.svelte?raw';
+</script>
+
+## ひとことで言うと
+
+**debounce 検索**は、ひとことで言うと
+
+> **「入力が少し止まってから検索する」仕組み**
+
+です。
+1文字打つたびに検索しない、**最後に打った文字から少し待ってから1回だけ**検索する——これだけで、サーバーもブラウザも**ぐっと軽く**なります。
+
+## たとえ話：相手が話し終わるのを待つ
+
+友だちが話している途中で**毎回返事**をすると、会話が大変ですよね。
+「あの〜」「はい！」「えーと〜」「はい！」「昨日〜」「はい！」……
+
+debounce は、この**「相手の話が少し止まってから返事する」**という気づかいです。
+ユーザーが**入力を一瞬止めた**のを見計らって、**1回だけ**処理を走らせます。
+
+## なぜ必要？
+
+たとえば「**防災**」と入力するだけで、何も対策しないと
+
+- `防` で1回検索
+- `防災` で1回検索
+
+——と**2回も**検索が走ります。
+お客さんが多いサイトなら、**サーバー負荷**にも**通信量**にも響きます。
+
+debounce を入れれば、
+
+- `防` …（タイマー予約）
+- `防災` …（前のタイマーをキャンセルして新しい予約）
+- 入力が止まる
+- 500ms 後 → **`防災` で1回だけ**検索 ✓
+
+これで**1回**で済みます。
+
+## このページで作るもの
+
+- **検索欄**（入力中）
+- 入力文字 **`query`**
+- 少し待ってから検索する **debounce**
+- **idle / loading / error / empty / success** の表示
+- 疑似検索の結果
+- **クリア**ボタン
+
+## これまでの章とのつながり
+
+このページは、これまでの章の**応用と接続**で完成します。
+
+- [検索リスト](/docs/examples/search-list)：絞りこみ UI の出発点（クライアント側 filter）
+- [+server.ts でAPIを作る](/docs/sveltekit/api-routes)：本格運用のサーバー検索
+- [4状態UI](/docs/patterns/loading-error)：表示の出し分け
+- [$effect](/docs/svelte/effect)：変化を見張る + 片付けの `return`
+- [bind](/docs/svelte/bind)：入力欄と `query` をつなぐ
+- [Result型](/docs/typescript/result-pattern)：失敗を型で扱う発展先
+- [型ガード](/docs/typescript/type-guard)：API レスポンスの安全な絞りこみ
+
+## 完成プレビュー
+
+下のプレビューで実際に試せます。
+**「防災」「環境」「役員」**などで打ってみてください。
+**`error`** と入れると、わざと失敗してエラー表示が出ます。
+
+<ComponentPreview
+	sources={[
+		{ name: '_DebounceSearchDemo.svelte', code: demoSource, language: 'svelte' }
+	]}
+>
+	<DebounceSearchDemo />
+</ComponentPreview>
+
+ここからは、このコードを **7ステップ**で組み立てていきます。
+
+<Steps>
+
+<Step title="Step 1：query を $state で持つ">
+
+検索欄の文字を、いつものように [$state](/docs/svelte/state) に入れます。
+
+```ts
+let query = $state('');
+```
+
+### これは何をしているか
+
+- `query` … 「**今入力されている検索文字**」
+- 最初は空っぽ
+- これから、**入力欄と `query` をひもでつなぎ**、`query` が変わったら**少し待って検索**するように仕掛けます
+
+</Step>
+
+<Step title="Step 2：bind:value で入力欄とつなぐ">
+
+入力欄と `query` を [`bind:value`](/docs/svelte/bind) で結ぶと、**入力するたびに `query` が変わります**。
+
+```svelte
+<input type="search" bind:value={query} placeholder="検索ワード" />
+```
+
+### これは何をしているか
+
+- ユーザーが文字を打つ → **`query` も自動で変わる**
+- ここまでは [検索リスト](/docs/examples/search-list) と同じ
+- 違いは、ここから**すぐに `filter` せず、タイマーを挟む**ところ
+
+</Step>
+
+<Step title="Step 3：$effect で query を見張る">
+
+[`$effect`](/docs/svelte/effect) は「**値が変わったら自動で動く見張り係**」でした。
+これを使って、`query` が変わるたびに**タイマーを仕掛けます**。
+
+```ts
+$effect(() => {
+	const q = query.trim();
+
+	if (q === '') {
+		state = { kind: 'idle' };
+		return;
+	}
+
+	const timer = setTimeout(() => {
+		// ここで検索する（次の Step で書く）
+	}, 500);
+
+	return () => clearTimeout(timer);
+});
+```
+
+### これは何をしているか
+
+- `query.trim()` … 前後の空白を削る
+- 空っぽなら **`idle`**（待機状態）に戻す
+- そうでなければ **`setTimeout(…, 500)`** で「**500ms 後に検索する予約**」を入れる
+- `return () => clearTimeout(timer)` … **片付けの予約取り消し**
+
+> ポイント：「**タイマーを仕掛けるだけ**」。すぐ検索しない。次の Step で、なぜこれが debounce になるのかを見ます。
+
+</Step>
+
+<Step title="Step 4：cleanup で前のタイマーを消す">
+
+ここが debounce の**本当の正体**。
+$effect の `return` で返した関数（**cleanup**）は、**次に effect が走る直前**に呼ばれます。
+
+```ts
+$effect(() => {
+	const timer = setTimeout(() => {
+		// 検索する
+	}, 500);
+
+	return () => clearTimeout(timer);
+});
+```
+
+### これは何をしているか
+
+- ユーザーが「**防**」を入力 → 500ms タイマーを予約
+- すぐ「**防災**」を入力 → **cleanup が呼ばれる → 前のタイマーをキャンセル → 新しい 500ms タイマーを予約**
+- ユーザーが入力を**止めた瞬間**から 500ms 経って、**最後の予約だけ**が実行される
+- 結果：**1回だけ検索が走る**
+
+> 「**新しい入力が来たら、前の予約を消す**」——これだけで、何文字打っても**最後に1回だけ**検索される仕組みになります。これが debounce の魔法です。
+
+</Step>
+
+<Step title="Step 5：loading / error / success を表示する">
+
+[4状態UI](/docs/patterns/loading-error) の出番です。
+`State` 型を作って、検索の状態を**5つに分けて**持ちます。
+
+```ts
+type State =
+	| { kind: 'idle' }
+	| { kind: 'loading' }
+	| { kind: 'error'; message: string }
+	| { kind: 'success'; results: Notice[] };
+```
+
+```svelte
+{#if state.kind === 'idle'}
+	<p>検索ワードを入れてください</p>
+{:else if state.kind === 'loading'}
+	<p>読み込み中…</p>
+{:else if state.kind === 'error'}
+	<p class="error">⚠ {state.message}</p>
+{:else if state.results.length === 0}
+	<p>「{query}」に合うお知らせは見つかりません</p>
+{:else}
+	<ul>
+		{#each state.results as notice (notice.slug)}
+			<li>{notice.title}</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `idle` … まだ何も入力していない
+- `loading` … タイマーが切れて検索中
+- `error` … 失敗
+- `success` の `results.length === 0` … 該当なし（empty）
+- それ以外 … 結果一覧
+- [`{#if}`](/docs/svelte/if) ＋ [Union 型](/docs/typescript/union-literal) で**画面が真っ白にならない**
+
+> [4状態UI](/docs/patterns/loading-error) で覚えた **`loading / error / empty / data`** が、debounce 検索でも**そのまま使える**ことがポイント。
+
+</Step>
+
+<Step title="Step 6：本物の API にするとき">
+
+このページのデモは**疑似検索**（`setTimeout` で 300ms 待って配列を `filter`）。
+実務では、`+server.ts` で作った **検索 API** を呼びます（→ [+server.ts](/docs/sveltekit/api-routes)）。
+
+```ts
+const timer = setTimeout(async () => {
+	state = { kind: 'loading' };
+	try {
+		const res = await fetch(`/api/notices/search?q=${encodeURIComponent(q)}`);
+		if (!res.ok) throw new Error('検索に失敗しました');
+		const data = await res.json();
+		state = { kind: 'success', results: data.results };
+	} catch (e) {
+		const message = e instanceof Error ? e.message : '不明なエラー';
+		state = { kind: 'error', message };
+	}
+}, 500);
+```
+
+### これは何をしているか
+
+- `setTimeout` の中で **`await fetch(...)`** に置きかえ
+- `encodeURIComponent` … URL に**安全に**入れる
+- 失敗時は `error` 状態に
+- 成功なら `success` 状態に
+
+> [検索リスト](/docs/examples/search-list) を「サーバー検索版」に発展させると、まさにこの形になります。
+
+</Step>
+
+<Step title="Step 7：Result型や型ガードとつなげる">
+
+API から返る値を**そのまま信用しすぎない**のが実務の品質です。
+本格運用では [Result型](/docs/typescript/result-pattern) や [型ガード](/docs/typescript/type-guard) を組み合わせると、**もっと安全**になります。
+
+```ts
+async function searchNotices(query: string): Promise<Result<Notice[], AppError>> {
+	try {
+		const res = await fetch(`/api/notices/search?q=${encodeURIComponent(query)}`);
+		if (!res.ok) {
+			return { ok: false, error: { message: '検索に失敗しました' } };
+		}
+		const data: unknown = await res.json();
+		if (!isSearchResponse(data)) {
+			return { ok: false, error: { message: 'データの形が違います' } };
+		}
+		return { ok: true, data: data.results };
+	} catch (e) {
+		return {
+			ok: false,
+			error: { message: e instanceof Error ? e.message : '不明なエラー' }
+		};
+	}
+}
+```
+
+### これは何をしているか
+
+- `Promise<Result<Notice[], AppError>>` … 戻りの形を**型で見せる**
+- `isSearchResponse(data)` … API レスポンスの**形チェック**（→ [型ガード](/docs/typescript/type-guard)）
+- 呼び出し側は `if (result.ok) { ... } else { ... }` の**1度の分岐**で安全に扱える
+
+> 「**debounce で 1 回にまとめる → Result で安全に受ける → 4状態UI で表示**」が、**本格的なサーバー検索画面の鉄板パターン**です。
+
+</Step>
+
+</Steps>
+
+## 実務では何に使う？
+
+debounce は、**入力に応じて何かを実行する画面のほぼすべて**で出番があります。
+
+- **お知らせ検索**（自治会・社内ポータル）
+- **FAQ 検索**
+- **管理画面のユーザー検索**
+- **商品検索・カテゴリ絞り込み**
+- **住所検索**（郵便番号 → 住所候補）
+- **タグ検索 / オートコンプリート**
+- **マップの場所検索**
+- **コマンドパレット**（⌘K のようなランチャー）
+
+## 使いすぎ注意
+
+debounce は強力ですが、**いつでも入れる**のは違います。
+
+| 状況 | おすすめ |
+| --- | --- |
+| **小さい配列**をブラウザ内で `filter` するだけ | **不要**（[$derived](/docs/svelte/derived) で十分） |
+| **API 検索**・重い処理 | **debounce が向いている** |
+| 入力直後に**結果がすぐ欲しい**（電卓など） | **不要**（即時計算でOK） |
+| **連打で困る**ボタン送信 | **debounce より throttle / loading 中はボタン disabled** が向く場面も |
+
+> 待ち時間は **300〜500ms** がよく使われます。
+> 短すぎると**毎文字検索**に近づき、長すぎると**反応が遅い**と感じる——その間が定番です。
+
+## ちょっとしたコツ
+
+| シーン | コツ |
+| --- | --- |
+| 古い結果が遅れて返ってきても表示しない | `let cancelled = false` を cleanup で `true` に → コールバック内で確認 |
+| 入力が空のときは検索しない | $effect の冒頭で `query.trim() === ''` を判定して `idle` に戻す |
+| URL の `?q=...` と同期したい | `goto` や `$page.url.searchParams` で連動 → リロードしても結果が残る |
+| サーバー負担をさらに減らす | サーバー側にも**キャッシュ**（同じクエリの結果を覚える）を入れる |
+
+> このページのデモには **`cancelled`** フラグ版が入っています。**遅れて返ってきた古い結果**を捨てる仕組みです。
+
+## 今日のまとめ
+
+- debounce ＝ **「入力が少し止まってから1回だけ実行」**
+- 仕組みは **`$effect` + `setTimeout` + `clearTimeout`**
+- **cleanup で前のタイマーを消す**のが debounce の正体
+- 5状態（**idle / loading / error / empty / success**）で画面が落ち着く
+- 本物の API では `fetch` に置きかえ、[Result型](/docs/typescript/result-pattern) と [型ガード](/docs/typescript/type-guard) で安全に
+- 待ち時間は **300〜500ms** が定番
+
+## 今はここだけでOK
+
+> **「`$effect` で setTimeout を仕掛け、cleanup で clearTimeout する」**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- 検索欄に **`query` を `bind:value`** でつないでみる
+- `$effect` で `query` を見張って、**`console.log(query)` するだけ**の最小版を作る
+- そこに `setTimeout(..., 500)` と `return () => clearTimeout(timer)` を**足す**
+- 連打しても**最後の入力だけ**ログに出ることを確認する
+- [4状態UI](/docs/patterns/loading-error) を組み合わせて、**`loading` 表示**を出してみる
+- [検索リスト](/docs/examples/search-list) のクライアント側 filter を、**サーバー検索 + debounce 版**に発展させる
+- [Result型](/docs/typescript/result-pattern) で `searchNotices` の戻りを `Result<Notice[], AppError>` に書きかえる

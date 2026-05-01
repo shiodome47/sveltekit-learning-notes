@@ -1,0 +1,249 @@
+---
+title: APIレスポンスに型を付けよう
+name: APIレスポンス
+description: fetch で取ってきたデータは、そのままだと中身が曖昧。返ってくる形を type で決めて、安全に使えるようにします。+server.ts と search-list の発展形を実例として整理します。
+category: TypeScript 実践基本
+order: 60
+---
+
+## ひとことで言うと
+
+API から返ってくるデータも、ひとことで言うと
+
+> **「返ってくる形を `type` で決めると、後の処理が安全になる」**
+
+です。
+`fetch` の結果は **そのままだと中身が曖昧（`any` 同然）** なので、**自分で型を付ける**のが定番です。
+
+## たとえ話：荷物の中身を確かめる
+
+宅配便で箱が届いたら、
+
+| たとえ | コード |
+| --- | --- |
+| **何が入っているか書いた送り状** | `type SearchResponse = { ... }` |
+| **箱を開ける** | `await res.json()` |
+| **中身を取り出す** | `data.results` |
+
+送り状（型）が無いと、**箱を開けるまで中身がわからない**まま処理を進めることになります。
+それは怖いので、**先に「こういう形ですよ」と TypeScript に教える**のがこの章のテーマです。
+
+## 一番シンプルな型付け
+
+[+server.ts](/docs/sveltekit/api-routes) で作った検索 API（→ [検索リスト](/docs/examples/search-list)）を、`fetch` で呼び出す例です。
+
+```ts
+type Notice = {
+	slug: string;
+	title: string;
+	excerpt: string;
+};
+
+type SearchResponse = {
+	results: Notice[];
+};
+
+async function searchNotices(query: string): Promise<SearchResponse> {
+	const res = await fetch(`/api/notices/search?q=${encodeURIComponent(query)}`);
+	return (await res.json()) as SearchResponse;
+}
+```
+
+### これは何をしているか
+
+- `Notice` … 1件の型
+- `SearchResponse` … API の戻り**全体**の型（`results` に `Notice[]`）
+- `Promise<SearchResponse>` … この関数は最終的に `SearchResponse` を返す
+- `as SearchResponse` … 「`json()` の結果を `SearchResponse` として扱う」と TypeScript に伝える
+- `encodeURIComponent(query)` … URL に**安全に**入れる
+
+> `as SearchResponse` は **「中身を見ずに型を決めてしまう」** 書き方なので、**気軽だけど少し危険**でもあります（後述）。
+
+## 呼び出す側はこう使える
+
+型を付けると、呼び出す側で**ピリオドの後の補完**が効きます。
+
+```svelte
+<script lang="ts">
+	let results = $state<Notice[]>([]);
+
+	async function search(query: string) {
+		const data = await searchNotices(query);
+		results = data.results; // ← 補完が効く！
+	}
+</script>
+```
+
+### これは何をしているか
+
+- `data.results` … エディタが「**`results` ってあるよ**」と教えてくれる
+- `data.foo` のような**間違った名前**を書いたら**赤線で警告**
+- `results[0].title` も**そのまま安全に使える**
+
+> 型のおかげで、**「あれ？このAPIどんな形だっけ？」**と悩む時間が**激減**します。
+
+## try / catch とエラーの型
+
+`fetch` は失敗することもあります。**try / catch** で囲むのが基本です。
+
+```ts
+async function searchNotices(query: string): Promise<Notice[]> {
+	try {
+		const res = await fetch(`/api/notices/search?q=${encodeURIComponent(query)}`);
+		if (!res.ok) {
+			throw new Error('検索に失敗しました');
+		}
+		const data = (await res.json()) as SearchResponse;
+		return data.results;
+	} catch (e) {
+		console.error(e);
+		return [];
+	}
+}
+```
+
+### これは何をしているか
+
+- `try { ... } catch (e) { ... }` … 失敗しても**画面が落ちない**ようにする
+- `if (!res.ok)` … 4xx / 5xx を自分で**例外**に変える
+- `catch (e)` の `e` の型は **`unknown`**（モダンな TS の標準）
+- 失敗したら**空の配列**を返す → 画面側は「**該当なし**」と同じ扱いにできる
+
+> `e` の型が `unknown` なので、`e.message` のように直接は触れません。
+> 触りたいときは `if (e instanceof Error) { ... }` のように**型ガード**で絞ります。
+
+## 4状態UI と組み合わせる
+
+[loading / error：4状態UI](/docs/patterns/loading-error) で出てきた union 型と相性ばっちりです。
+
+```ts
+type State =
+	| { status: 'loading' }
+	| { status: 'error'; message: string }
+	| { status: 'success'; results: Notice[] };
+
+let state = $state<State>({ status: 'loading' });
+
+async function search(query: string) {
+	state = { status: 'loading' };
+	try {
+		const res = await fetch(`/api/notices/search?q=${encodeURIComponent(query)}`);
+		if (!res.ok) throw new Error('通信エラー');
+		const data = (await res.json()) as SearchResponse;
+		state = { status: 'success', results: data.results };
+	} catch (e) {
+		const message = e instanceof Error ? e.message : '不明なエラー';
+		state = { status: 'error', message };
+	}
+}
+```
+
+### これは何をしているか
+
+- `state` の型を `union` で**4状態を1つに**まとめる（→ [Union / Literal](/docs/typescript/union-literal)）
+- `loading` から始める
+- 成功なら `success`、失敗なら `error`
+- 画面側は [`{#if}`](/docs/svelte/if) で `state.status` を見て出し分け
+
+> 「**APIレスポンスの型 + 4状態UI**」は、**実務でいちばん多いデータ取得画面の型**です。
+
+## as は気軽だけど少し危険
+
+`as SearchResponse` は **「中身を見ずに型を信じる」** ので、**実は形が違ったらバグります**。
+本格運用では**バリデーションライブラリ**を使うのが安全です。
+
+| 段階 | 道具 | 説明 |
+| --- | --- | --- |
+| 入門・小規模 | `as ApiResponse` | 一番シンプル。**今すぐ使える** |
+| 中規模・本格 | **zod / valibot** など | **実行時にも形を確認**してくれる |
+| 大規模・厳密 | スキーマ自動生成（OpenAPI など） | API と型を**自動で同期**する |
+
+> このサイトは初心者向けなので、**まずは `as` でOK**。
+> 「**この API は信用できないな**」と思った時に、zod などを足していけば大丈夫です。
+
+## サーバー側でも型を付ける
+
+[+server.ts](/docs/sveltekit/api-routes) で **API を返す側**にも、型を書いておくと**両側で揃います**。
+
+```ts
+// src/routes/api/notices/search/+server.ts
+import { json } from '@sveltejs/kit';
+import { searchNotices } from '$lib/server/notices';
+
+type Notice = {
+	slug: string;
+	title: string;
+	excerpt: string;
+};
+
+type SearchResponse = {
+	results: Notice[];
+};
+
+export function GET({ url }) {
+	const q = url.searchParams.get('q') ?? '';
+	const results: Notice[] = searchNotices(q);
+	const response: SearchResponse = { results };
+	return json(response);
+}
+```
+
+### これは何をしているか
+
+- 返す形にも `SearchResponse` 型をかぶせる
+- **`response: SearchResponse`** と明示することで、**返し忘れ**や**形違い**を防ぐ
+- 呼び出す側と**同じ型を使う**と、両側のずれが減る
+
+> 実務では、`Notice` や `SearchResponse` を **`$lib/types/`** などの共通の場所に置いて、**サーバー側もクライアント側も同じ型を import** する形にすると整理しやすいです。
+
+## load との関係
+
+[+page.server.ts](/docs/sveltekit/page-server) の `load` で `fetch` する場合、SvelteKit の用意してくれた **`fetch`** を使うのがコツです。
+
+```ts
+// src/routes/news/+page.server.ts
+import type { PageServerLoad } from './$types';
+
+type Article = {
+	id: number;
+	title: string;
+	body: string;
+};
+
+export const load: PageServerLoad = async ({ fetch }) => {
+	const res = await fetch('https://api.example.com/news');
+	const articles = (await res.json()) as Article[];
+	return { articles };
+};
+```
+
+### これは何をしているか
+
+- `({ fetch })` … **SvelteKit が用意してくれた fetch**（サーバーでも動く）
+- `as Article[]` … 戻りに型を貼る
+- 画面側は `data.articles` で安全に使える
+
+> サーバー側で型をしっかり貼っておくと、**画面に渡る時点でデータが正しい形**であることが保証されます。
+
+## 今日のまとめ
+
+- API レスポンスにも、**`type` で形を決める**のが定番
+- `await res.json() as SearchResponse` で、ざっくり型を貼る
+- `try / catch` で**失敗にも備える**（`catch (e)` の型は `unknown`）
+- [4状態UI](/docs/patterns/loading-error) と組み合わせると、画面が落ちにくくなる
+- 厳密にしたいときは **zod / valibot** などのバリデーションライブラリ
+- サーバー側も**同じ型**で揃えると安心
+
+## 今はここだけでOK
+
+> **「`fetch` で取ったら、`as 型名` で形を貼る。失敗は `try / catch`。」**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- [検索リスト](/docs/examples/search-list) を、本物の `/api/notices/search` を呼ぶ版に発展させてみる
+- 上の `searchNotices` 関数に [4状態UI](/docs/patterns/loading-error) の `State` を組み合わせる
+- 失敗時の `error` 状態を**わざと再現**するため、わざと違う URL を叩いて挙動を見る
+- サーバー側の [+server.ts](/docs/sveltekit/api-routes) に `SearchResponse` 型を書いて、両側で同じ型を使ってみる
+- 余裕があれば、**`zod`** で `SearchResponse` を**実行時にも検証**する版を試す（`bun add zod`）

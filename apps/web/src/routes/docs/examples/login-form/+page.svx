@@ -1,0 +1,709 @@
+---
+title: ログインフォームを作ろう
+name: ログインフォーム
+description: hooks / form actions / Cookie / locals.user / admin-board をつなげる認証の入口。ログインフォームから Cookie を作り、hooks.server.ts でユーザーを復元し、admin 配下を守るまでの流れを総合実例として整理します。教材用の最小サンプルなので、本番で必要なセキュリティ要件は別途明記します。
+category: 小さなアプリ例
+order: 80
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import LoginFormDemo from './_LoginFormDemo.svelte';
+
+	const authSource = `// src/lib/server/auth.ts
+//
+// ⚠️ 教材用の最小サンプル。
+// ⚠️ 本番では平文パスワードは絶対NG。
+// ⚠️ bcrypt / argon2 でハッシュ化、DBでユーザーとセッションを管理する。
+
+export type User = {
+	id: number;
+	username: string;
+	role: 'admin' | 'member';
+};
+
+// 教材用の仮ユーザー（本番では DB から照合）
+const users = [
+	{ id: 1, username: 'admin', password: 'password', role: 'admin' as const },
+	{ id: 2, username: 'taro', password: 'pass1234', role: 'member' as const }
+];
+
+// 教材用の仮セッションストア（本番では Redis や DB に置きかえ）
+const sessions = new Map<string, User>();
+
+export function verifyLogin(username: string, password: string): User | null {
+	const found = users.find(
+		(u) => u.username === username && u.password === password
+	);
+	if (!found) return null;
+	return { id: found.id, username: found.username, role: found.role };
+}
+
+export function createSession(user: User): string {
+	const sessionId = crypto.randomUUID();
+	sessions.set(sessionId, user);
+	return sessionId;
+}
+
+export function getUserFromSession(sessionId: string | undefined): User | null {
+	if (!sessionId) return null;
+	return sessions.get(sessionId) ?? null;
+}
+
+export function destroySession(sessionId: string | undefined): void {
+	if (sessionId) sessions.delete(sessionId);
+}
+`;
+
+	const hooksSource = `// src/hooks.server.ts
+//
+// 入口の受付係。Cookie を見て locals.user を復元する。
+
+import type { Handle } from '@sveltejs/kit';
+import { getUserFromSession } from '$lib/server/auth';
+
+export const handle: Handle = async ({ event, resolve }) => {
+	const sessionId = event.cookies.get('session');
+	event.locals.user = getUserFromSession(sessionId);
+	return await resolve(event);
+};
+`;
+
+	const loginServerSource = `// src/routes/login/+page.server.ts
+//
+// ログインフォームの受付。
+// 成功 → Cookie をセットして /admin/notices へ。
+// 失敗 → fail(...) で同じページに戻す。
+
+import { fail, redirect } from '@sveltejs/kit';
+import { verifyLogin, createSession } from '$lib/server/auth';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ locals }) => {
+	// すでにログイン済みなら管理画面へ送る
+	if (locals.user) {
+		redirect(303, '/admin/notices');
+	}
+	return {};
+};
+
+export const actions: Actions = {
+	default: async ({ request, cookies }) => {
+		const data = await request.formData();
+		const username = String(data.get('username') ?? '').trim();
+		const password = String(data.get('password') ?? '');
+
+		if (username === '' || password === '') {
+			return fail(422, {
+				error: 'ユーザー名とパスワードを入力してください',
+				username
+			});
+		}
+
+		const user = verifyLogin(username, password);
+		if (!user) {
+			return fail(401, {
+				error: 'ユーザー名かパスワードが違います',
+				username
+			});
+		}
+
+		const sessionId = createSession(user);
+
+		cookies.set('session', sessionId, {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: !import.meta.env.DEV,
+			maxAge: 60 * 60 * 24 * 7 // 1週間
+		});
+
+		redirect(303, '/admin/notices');
+	}
+};
+`;
+
+	const loginPageSource = `<!-- src/routes/login/+page.svelte -->
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	let { form } = $props();
+<\/script>
+
+<h1>ログイン</h1>
+
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+
+<form method="POST" use:enhance>
+	<label>
+		ユーザー名
+		<input
+			type="text"
+			name="username"
+			autocomplete="username"
+			value={form?.username ?? ''}
+			required
+		/>
+	</label>
+
+	<label>
+		パスワード
+		<input
+			type="password"
+			name="password"
+			autocomplete="current-password"
+			required
+		/>
+	</label>
+
+	<button type="submit">ログイン</button>
+</form>
+`;
+
+	const logoutSource = `// src/routes/logout/+server.ts
+//
+// ログアウト用の API ルート。
+// Cookie を消して、サーバー側のセッションも破棄する。
+
+import { redirect } from '@sveltejs/kit';
+import { destroySession } from '$lib/server/auth';
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = ({ cookies }) => {
+	const sessionId = cookies.get('session');
+	destroySession(sessionId);
+	cookies.delete('session', { path: '/' });
+	redirect(303, '/login');
+};
+`;
+</script>
+
+## ひとことで言うと
+
+ログインフォームは、ひとことで言うと
+
+> **「ユーザー名とパスワードを受け取り、ログイン中であることを Cookie に残す入口」**
+
+です。
+このページは、これまで作ってきた **[hooks](/docs/sveltekit/hooks) / [form actions](/docs/sveltekit/form-actions) / Cookie / locals.user / [admin-board](/docs/examples/admin-board)** を**ぜんぶつなげる**総合実例です。
+
+> ⚠️ **このページは「本格的な認証システム」ではありません**。
+> あくまで**流れを理解するための教材**です。
+> 本番では**パスワードハッシュ化・セッション管理・CSRF・HTTPS・レート制限**などが必須になります（記事末尾でくわしく）。
+
+## まず大事な前提：実務では外部ログインが主流
+
+このページは **「自前でパスワード認証を作る学習用教材」** です。
+**最近の実務では、自前でパスワード認証をゼロから作ることは多くありません**。
+
+実務で**主流**なのはこちらです：
+
+| 仕組み | 例 |
+| --- | --- |
+| **SNSログイン**（OAuth / OpenID Connect） | Google / LINE / GitHub / Apple / Microsoft でログイン |
+| **認証ライブラリ** | Auth.js（旧 NextAuth.js）／ Lucia ／ Clerk |
+| **マネージド認証サービス** | Firebase Auth ／ Supabase Auth ／ Auth0 ／ WorkOS |
+
+これらを使えば、**パスワード保管・ハッシュ化・セッション管理・パスワードリセット・2FA・ソーシャルログイン**などを**自分で書かずに済みます**。
+**「自前認証はセキュリティ責任が重い」**——脆弱性が出ると致命的なので、**信頼できるサービスやライブラリに任せる**のが安全です。
+
+### それでもこのページを読む価値
+
+外部ログインを使う場合でも、**裏側で動いている仕組み**は共通しています。
+
+| 自前認証（このページ） | SNSログイン / Auth.js / Supabase Auth |
+| --- | --- |
+| `verifyLogin` で本人確認 | プロバイダ（Google など）が本人確認 |
+| `cookies.set('session', ...)` | ライブラリ／プロバイダが Cookie をセット |
+| `hooks.server.ts` で `locals.user` を復元 | **同じ**（Auth.js も `locals.user` を埋める） |
+| `+layout.server.ts` で守る | **同じ**（守衛コードはそのまま） |
+
+> つまり **「Cookie → hooks → locals.user → protected route」** の流れは、**外部認証を使う場合でも変わりません**。
+> このページの仕組みを理解しておけば、**Auth.js や Supabase Auth に切り替えるとき**にも**腑に落ちて使える**ようになります。
+
+**「学習目的の自作 → 本番は外部認証」** という前提を頭に入れて、ここから先を読み進めてください。
+
+## たとえ話：受付で名札をもらう
+
+ログインは **「受付で名札をもらう」** ようなものです。
+
+| たとえ | コード |
+| --- | --- |
+| **受付で本人確認**（社員証を見せる） | ログインフォーム → `verifyLogin` |
+| **名札を渡される**（「あなたは佐藤さんですね」） | Cookie に session ID をセット |
+| **次のページで名札を見せる** | リクエストごとに Cookie が自動で送られる |
+| **入口の受付係が名札を見て、誰か把握する** | `hooks.server.ts` で `locals.user` に復元 |
+| **管理者専用フロアの入口** | `/admin/+layout.server.ts` の `error(403)` |
+| **退館時に名札を返す** | ログアウトで Cookie 削除 |
+
+## このページで作るもの
+
+- **`/login`** ページ（フォーム + フォーム送信受付）
+- **Cookie をセット**する処理
+- **`hooks.server.ts`** で Cookie からユーザーを復元
+- **`locals.user`** を作る
+- **`/admin`** に入れるようにする（[admin-board](/docs/examples/admin-board) と接続）
+- **ログアウト**で Cookie を消す
+
+## これまでの章とのつながり
+
+- [form actions](/docs/sveltekit/form-actions) … ログインフォームの受付
+- [hooks](/docs/sveltekit/hooks) … Cookie → `locals.user` を作る入口の受付係
+- [error / redirect](/docs/sveltekit/error-redirect) … `redirect(303, '/admin/notices')` / `fail(401, ...)`
+- [+page.server.ts](/docs/sveltekit/page-server) … サーバー専用処理
+- [+server.ts](/docs/sveltekit/api-routes) … ログアウト用の `POST` ルート
+- [お知らせ管理画面](/docs/examples/admin-board) … 「**ログイン後の行き先**」（`/admin/notices`）
+- [Result型](/docs/typescript/result-pattern) / [型ガード](/docs/typescript/type-guard) … 認証エラー処理の発展先
+
+## 完成イメージとファイル構成
+
+```bash
+src/
+├─ hooks.server.ts                    ← Cookie → locals.user 復元
+├─ lib/
+│  └─ server/
+│     └─ auth.ts                      ← ユーザー確認・セッション管理
+└─ routes/
+   ├─ login/
+   │  ├─ +page.server.ts              ← ログインフォームの受付
+   │  └─ +page.svelte                 ← ログイン画面
+   ├─ logout/
+   │  └─ +server.ts                   ← Cookie 削除
+   └─ admin/
+      └─ +layout.server.ts            ← 管理画面の守衛（admin-board と同じ）
+```
+
+役割を一言で：
+
+| ファイル | 役割 |
+| --- | --- |
+| `lib/server/auth.ts` | **`verifyLogin` / `createSession` / `getUserFromSession` / `destroySession`** |
+| `hooks.server.ts` | Cookie 読み出し → **`locals.user` に詰める** |
+| `routes/login/+page.svelte` | フォーム表示 |
+| `routes/login/+page.server.ts` | **`actions.default`** でログイン処理 |
+| `routes/logout/+server.ts` | **`POST`** で Cookie 削除 |
+| `routes/admin/+layout.server.ts` | 管理画面を守る（→ [admin-board](/docs/examples/admin-board)） |
+
+下のプレビューでデモを動かしながら、タブで **5ファイル**の本物コードを読めます。
+
+<ComponentPreview
+	sources={[
+		{ name: 'src/lib/server/auth.ts', code: authSource, language: 'typescript' },
+		{ name: 'src/hooks.server.ts', code: hooksSource, language: 'typescript' },
+		{ name: 'src/routes/login/+page.server.ts', code: loginServerSource, language: 'typescript' },
+		{ name: 'src/routes/login/+page.svelte', code: loginPageSource, language: 'svelte' },
+		{ name: 'src/routes/logout/+server.ts', code: logoutSource, language: 'typescript' }
+	]}
+>
+	<LoginFormDemo />
+</ComponentPreview>
+
+> 上のデモは **`$state` で疑似的にログイン状態を持つだけ**です（Cookieは使っていません）。
+> 試すアカウントは **`admin / password`** または **`taro / pass1234`**。
+
+それでは **6ステップ**で組み立てていきます。
+
+<Steps>
+
+<Step title="Step 1：auth.ts に認証処理を置く">
+
+`$lib/server/auth.ts` に**サーバー専用**の認証処理をまとめます。
+
+```ts
+// src/lib/server/auth.ts
+export type User = {
+	id: number;
+	username: string;
+	role: 'admin' | 'member';
+};
+
+const users = [
+	{ id: 1, username: 'admin', password: 'password', role: 'admin' as const },
+	{ id: 2, username: 'taro', password: 'pass1234', role: 'member' as const }
+];
+
+const sessions = new Map<string, User>();
+
+export function verifyLogin(username: string, password: string): User | null {
+	const found = users.find(
+		(u) => u.username === username && u.password === password
+	);
+	if (!found) return null;
+	return { id: found.id, username: found.username, role: found.role };
+}
+
+export function createSession(user: User): string {
+	const sessionId = crypto.randomUUID();
+	sessions.set(sessionId, user);
+	return sessionId;
+}
+
+export function getUserFromSession(sessionId: string | undefined): User | null {
+	if (!sessionId) return null;
+	return sessions.get(sessionId) ?? null;
+}
+
+export function destroySession(sessionId: string | undefined): void {
+	if (sessionId) sessions.delete(sessionId);
+}
+```
+
+### これは何をしているか
+
+- `User` … ログイン中ユーザーの型
+- `verifyLogin` … 「**本人確認**」（仮：平文比較）
+- `createSession` … 「**名札を作る**」（推測不能なIDをサーバー側で覚える）
+- `getUserFromSession` … 「**名札からユーザーを復元**」
+- `destroySession` … 「**名札を破棄**」
+
+> ⚠️ **`password === password`** はあくまで教材用。**本番では bcrypt / argon2 でハッシュ化したパスワードを比較**します。
+> 平文保存・平文比較は**絶対にしてはいけません**。
+
+</Step>
+
+<Step title="Step 2：login/+page.svelte でフォームを作る">
+
+ログイン画面は普通の HTML フォームです。
+
+```svelte
+<!-- src/routes/login/+page.svelte -->
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	let { form } = $props();
+</script>
+
+<h1>ログイン</h1>
+
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+
+<form method="POST" use:enhance>
+	<label>
+		ユーザー名
+		<input
+			type="text"
+			name="username"
+			autocomplete="username"
+			value={form?.username ?? ''}
+			required
+		/>
+	</label>
+
+	<label>
+		パスワード
+		<input
+			type="password"
+			name="password"
+			autocomplete="current-password"
+			required
+		/>
+	</label>
+
+	<button type="submit">ログイン</button>
+</form>
+```
+
+### これは何をしているか
+
+- `form?.error` … エラー時のメッセージ表示（→ [optional](/docs/typescript/optional)）
+- `value={form?.username ?? ''}` … エラーで戻ってきても**ユーザー名を消さない**（パスワードは安全のため毎回入力）
+- `autocomplete="username"` / `current-password` … ブラウザのパスワード保存機能と相性よく
+- `use:enhance` … スムーズ送信の**シール**（→ [form actions](/docs/sveltekit/form-actions)）
+
+> パスワード欄は **`type="password"`** で必ず**伏せ字**にすること。
+
+</Step>
+
+<Step title="Step 3：login/+page.server.ts で action を書く">
+
+フォーム送信を受けて、本人確認 → Cookie セット → `/admin/notices` へ送ります。
+
+```ts
+// src/routes/login/+page.server.ts
+import { fail, redirect } from '@sveltejs/kit';
+import { verifyLogin, createSession } from '$lib/server/auth';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ locals }) => {
+	if (locals.user) {
+		redirect(303, '/admin/notices');
+	}
+	return {};
+};
+
+export const actions: Actions = {
+	default: async ({ request, cookies }) => {
+		const data = await request.formData();
+		const username = String(data.get('username') ?? '').trim();
+		const password = String(data.get('password') ?? '');
+
+		if (username === '' || password === '') {
+			return fail(422, {
+				error: 'ユーザー名とパスワードを入力してください',
+				username
+			});
+		}
+
+		const user = verifyLogin(username, password);
+		if (!user) {
+			return fail(401, {
+				error: 'ユーザー名かパスワードが違います',
+				username
+			});
+		}
+
+		const sessionId = createSession(user);
+
+		cookies.set('session', sessionId, {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: !import.meta.env.DEV,
+			maxAge: 60 * 60 * 24 * 7
+		});
+
+		redirect(303, '/admin/notices');
+	}
+};
+```
+
+### これは何をしているか
+
+- `load` … **すでにログイン済み**なら、`/admin/notices` に**先送り**
+- `actions.default` … 名前のない default アクション（フォームの `action="?/..."` を省略できる）
+- 入力チェック → **`fail(422)`**（→ [error / redirect](/docs/sveltekit/error-redirect)）
+- 本人確認失敗 → **`fail(401)`**
+- 成功 → `cookies.set(...)` → `redirect(303, '/admin/notices')`
+
+### Cookie の設定オプション
+
+| オプション | 意味 | 推奨 |
+| --- | --- | --- |
+| **`path: '/'`** | サイト全体で送られる | **必須**（指定しないと本ページの URL に縛られる） |
+| **`httpOnly: true`** | JavaScript から読めない | **必須**（XSS で盗まれにくい） |
+| **`sameSite: 'lax'`** | 別サイトからの送信を制限 | **必須**（CSRF 緩和） |
+| **`secure: true`** | HTTPS 通信のみ送る | **本番では必須**。`!import.meta.env.DEV` で開発環境だけ無効化 |
+| **`maxAge`** | 有効期限（秒） | 用途に応じて（例：1週間） |
+
+> **`path: '/'` を必ず指定する**こと。指定しないと、Cookie が `/login` のときだけしか送られなくなります（実務でよく踏むワナ）。
+
+</Step>
+
+<Step title="Step 4：hooks.server.ts でCookieを読む">
+
+[hooks.server.ts](/docs/sveltekit/hooks) で Cookie を読み、**ユーザーを復元**します。
+
+```ts
+// src/hooks.server.ts
+import type { Handle } from '@sveltejs/kit';
+import { getUserFromSession } from '$lib/server/auth';
+
+export const handle: Handle = async ({ event, resolve }) => {
+	const sessionId = event.cookies.get('session');
+	event.locals.user = getUserFromSession(sessionId);
+	return await resolve(event);
+};
+```
+
+### これは何をしているか
+
+- `event.cookies.get('session')` … リクエストの Cookie から **`session` を取り出す**
+- `getUserFromSession(sessionId)` … 名札（sessionId）から**ユーザーを復元**
+- 見つからなければ `null`
+- `event.locals.user = ...` … **すべてのページ・APIから**読めるようになる
+
+> [hooks](/docs/sveltekit/hooks) 章では「**仮ユーザーを直接代入**」していました。
+> このページで、ようやく **「Cookie を経由して本物のユーザー」**を復元する形に**進化**します。
+
+</Step>
+
+<Step title="Step 5：admin/+layout.server.ts で守る">
+
+これは [お知らせ管理画面](/docs/examples/admin-board) で実装したものと**まったく同じ**です。
+
+```ts
+// src/routes/admin/+layout.server.ts
+import { error, redirect } from '@sveltejs/kit';
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = ({ locals }) => {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	if (locals.user.role !== 'admin') {
+		error(403, '管理者だけが見られます');
+	}
+
+	return {
+		user: locals.user
+	};
+};
+```
+
+### これは何をしているか
+
+- 未ログイン → **`/login`** に送る
+- 管理者でない → **403 で止める**
+- 通れば `user` を全 admin ページに渡す
+
+> [admin-board](/docs/examples/admin-board) のときは「**仮ユーザー**」でした。
+> 今や **本物のログインフローと完全に接続**しています。
+
+</Step>
+
+<Step title="Step 6：logout/+server.ts でCookieを消す">
+
+ログアウトは「**名札を返す**」だけ。
+
+```ts
+// src/routes/logout/+server.ts
+import { redirect } from '@sveltejs/kit';
+import { destroySession } from '$lib/server/auth';
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = ({ cookies }) => {
+	const sessionId = cookies.get('session');
+	destroySession(sessionId);
+	cookies.delete('session', { path: '/' });
+	redirect(303, '/login');
+};
+```
+
+### これは何をしているか
+
+- `destroySession(sessionId)` … サーバー側のセッションを破棄
+- `cookies.delete('session', { path: '/' })` … **Cookie を消す**（ここでも `path: '/'` 必須）
+- `/login` に**送り返す**
+
+ログアウトボタンは [+layout.svelte](/docs/sveltekit/layout) などに置きます：
+
+```svelte
+<form method="POST" action="/logout">
+	<button>ログアウト</button>
+</form>
+```
+
+> **POST で送る**のが安全（GET だと、画像タグなどで意図せず叩かれる可能性があるため）。
+
+</Step>
+
+</Steps>
+
+## 全体の流れ（5段リレー）
+
+ここまでの仕組みを**1枚絵**で整理します。
+
+```
+1️⃣ ユーザーがフォーム送信（username + password）
+       ↓
+2️⃣ login/+page.server.ts の actions
+   → verifyLogin → createSession → cookies.set('session', ...)
+   → redirect(303, '/admin/notices')
+       ↓
+3️⃣ ブラウザは Cookie 付きで /admin/notices へリクエスト
+       ↓
+4️⃣ hooks.server.ts
+   → cookies.get('session') → getUserFromSession → locals.user に詰める
+       ↓
+5️⃣ admin/+layout.server.ts
+   → locals.user チェック → admin なら通す / それ以外は redirect or error
+```
+
+ログアウトは逆向きに：
+
+```
+ログアウトボタン → /logout に POST → destroySession → cookies.delete → /login
+```
+
+## ⚠️ 本番では何が必要？（必読）
+
+このページのコードは**教材用の最小サンプル**です。
+**本番運用では、必ず以下を満たす**必要があります。
+
+| 必須要件 | なぜ必要？ |
+| --- | --- |
+| **パスワードのハッシュ化**（bcrypt / argon2 / scrypt） | 平文保存は**絶対NG**。漏洩時に直接ログインされる |
+| **セッションIDは推測不能**（`crypto.randomUUID()` 等） | 数字連番だと**他人になりすませる** |
+| **HTTPS 必須**（`secure: true`） | HTTP だと Cookie が**通信途中で盗まれる** |
+| **CSRF 対策** | 別サイトからの不正リクエストを弾く（`sameSite: 'lax'` ＋ Origin 確認） |
+| **レート制限**（同じIPからの試行回数制限） | 総当たり攻撃の防止 |
+| **ログイン失敗回数の制限** | アカウントロック・遅延 |
+| **DB でユーザーとセッションを管理** | サーバー再起動でログアウト、を避けるため |
+| **セッションの有効期限とローテーション** | 古い名札を**ずっと使えない**ように |
+| **パスワードリセット導線** | 忘れた時の救済（メール認証など） |
+| **二要素認証（2FA）** の検討 | 重要な画面なら必須レベル |
+| **監査ログ**（誰がいつログイン） | 不正利用を検出しやすく |
+| **外部認証サービスの利用検討** | Auth.js / Lucia / Clerk / Supabase Auth / Auth0 など |
+
+> 個人サイト・社内ツールでも、**パスワードハッシュ化と HTTPS は最低ライン**です。
+> 「自分で全部作る」より、**信頼できる認証ライブラリやサービスを使う**ほうが安全な場面が多いです。
+
+## 実務では何に使う？
+
+「**ログインしてから何かをする**」画面はぜんぶこの形：
+
+- **会員ページ**（自治会の役員ページ・PTA・サークル）
+- **管理画面**（お知らせ投稿・ユーザー管理・売上集計）
+- **自治会役員専用ページ**
+- **投稿管理・申請一覧**
+- **社内ツール**
+- **個人ダッシュボード**
+
+## admin-board とのつながり
+
+[お知らせ管理画面](/docs/examples/admin-board) では、**「常に admin としてログイン中」**として `locals.user` を直接書いていました。
+このページで、**「本当にログインフォームを通って admin になる」**流れが**完成**します。
+
+| ページ | 認証の扱い |
+| --- | --- |
+| [admin-board](/docs/examples/admin-board) | `event.locals.user = { name: 'Taro', role: 'admin' }` を**仮で固定** |
+| **このページ（login-form）** | フォーム → Cookie → hooks → **本物の `locals.user`** に進化 |
+
+両方を組み合わせれば、**「ログインフォーム + 権限つき管理画面 + 投稿フォーム + 削除」**の**完成形**になります。
+
+## 既存記事との接続マップ
+
+| 章 | このページでの使われ方 |
+| --- | --- |
+| [form actions](/docs/sveltekit/form-actions) | `actions.default` でログインを受ける |
+| [hooks](/docs/sveltekit/hooks) | Cookie → `locals.user` の復元 |
+| [error / redirect](/docs/sveltekit/error-redirect) | `fail(401)` / `fail(422)` / `redirect(303, '/admin/notices')` |
+| [+page.server.ts](/docs/sveltekit/page-server) | サーバー側の load + actions |
+| [+server.ts](/docs/sveltekit/api-routes) | ログアウト用の POST ハンドラ |
+| [optional](/docs/typescript/optional) | `form?.error` ／ `form?.username ?? ''` |
+| [class / style](/docs/svelte/class-style) | エラー赤枠・成功バッジの見た目 |
+| [Result型](/docs/typescript/result-pattern) | `verifyLogin` を `Result<User, AppError>` に発展可能 |
+| [型ガード](/docs/typescript/type-guard) | DB から取り出したユーザーの形チェック |
+| [admin-board](/docs/examples/admin-board) | ログイン後の**行き先**（`/admin/notices`） |
+
+## 今日のまとめ
+
+- ログイン ＝ **「ユーザー確認 → Cookie に名札」**
+- ログイン中ユーザーの判定 ＝ **「Cookie → hooks.server.ts → `locals.user`」**
+- 守衛 ＝ **`+layout.server.ts` の `redirect` / `error`**
+- ログアウト ＝ **「セッション破棄 + Cookie 削除」**
+- Cookie 設定の鉄板：**`path: '/'` / `httpOnly: true` / `sameSite: 'lax'` / `secure: 本番で true`**
+- このページは**教材の最小サンプル**。本番は **bcrypt / HTTPS / CSRF / レート制限** などが必須
+- **実務では Google / LINE / GitHub などの SNSログインや、Auth.js・Supabase Auth などの認証ライブラリを使うのが主流**
+- それでも **「Cookie → hooks → locals.user → protected route」** の流れは**外部認証でも共通**——このページの理解は無駄にならない
+
+## 今はここだけでOK
+
+> **「フォーム → Cookie → hooks → locals.user → +layout.server.ts」**
+
+5段リレーを**順番に思い出せれば**、認証の入口は理解できています。
+**この流れ自体は、SNSログインや Auth.js を使う場合にもそのまま当てはまります**。
+
+## 次に作る小さな練習
+
+- `login/+page.svelte` のフォーム構成を**紙に書く**（`username`・`password` 入力 + `button`）
+- `login/+page.server.ts` の `actions.default` の流れを**紙に書く**（`formData` → 検証 → `verifyLogin` → `cookies.set` → `redirect`）
+- **「Cookie → `hooks.server.ts` → `locals.user` → `admin/+layout.server.ts`」** の順番を**声に出して読む**
+- 上のデモで **`admin / password`** を入力して挙動を確認する
+- わざと**間違ったパスワード**を入れて、エラーの戻り方を見る
+- ログアウトして、**入力欄が空に戻る**のを確認する
+- **本番要件の表**を読み返し、「自分が作るときに最低限必要なもの」を**3つ選ぶ**
+- 自分のサイトを作る前に、**Auth.js / Lucia / Clerk** などの**認証ライブラリ**を1つ調べてみる

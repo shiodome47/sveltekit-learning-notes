@@ -1,0 +1,250 @@
+---
+title: 最初はどこにコードを書けばいい？
+name: 最初はどこに書く？
+description: 「練習しよう」と言われた瞬間に止まりがちな「どのファイルに書く？」「フォルダ作るの？」を解消する超初心者向けの入口。まずは src/routes/+page.svelte だけでOK、という安心感から始めます。
+category: はじめに
+order: 20
+---
+
+## ひとことで言うと
+
+最初の練習は、
+
+> **「新しいフォルダを作らず、`src/routes/+page.svelte` だけ触ればOK」**
+
+です。
+
+迷わず、怖がらず、まずはここから始めましょう。
+
+## まず、安心してほしいこと
+
+「**いいねボタンを作ってみよう**」と言われた瞬間、コード以前に**手が止まる**——そんなことはよくあります。
+
+- どのファイルに書けばいいの？
+- 新しいフォルダを作るの？
+- 既存のサイトを壊さない？
+- 何かを「インポート」しなきゃいけない？
+
+**ぜんぶ、最初は気にしなくて大丈夫です。**
+SvelteKit では、まず**`src/routes/+page.svelte` がトップページ**——これだけ覚えておけばOK。
+
+> 詳しい仕組みは [`+page.svelte`：ページ本体](/docs/sveltekit/page) で読めますが、今はこの一文だけでも十分です。
+
+## プロジェクトの一番小さい地図
+
+SvelteKit のプロジェクトには、たくさんファイルがあります。
+でも**最初は、たった1つだけ**を見ればOK。
+
+```bash
+my-svelte-app/
+├─ src/
+│  └─ routes/
+│     └─ +page.svelte    ← 最初はここだけ触る
+├─ package.json
+└─ ...
+```
+
+ほかのファイル（`package.json` や `svelte.config.js` など）は、**今は気にしなくて大丈夫**です。
+
+## +page.svelte は「トップページ」
+
+`src/routes/+page.svelte` は、ブラウザで `/`（つまり一番のトップページ）を開いたときに表示される**ページ本体**です。
+
+| ファイル | URL |
+| --- | --- |
+| `src/routes/+page.svelte` | `http://localhost:5173/` |
+
+ローカル開発中なら、上の URL をブラウザで開けば、このファイルの中身が表示されます。
+
+> 「**フォルダ＝URL**」という SvelteKit のクセは、慣れてしまうと一番気持ちいいところ。
+> くわしくは [`+page.svelte`：ページ本体](/docs/sveltekit/page) と [`[slug]`：動的ルート](/docs/sveltekit/dynamic-routes) で。
+
+## 練習1：いいねボタン
+
+`src/routes/+page.svelte` の中身を、こうしてみましょう。
+
+```svelte
+<script lang="ts">
+	let count = $state(0);
+</script>
+
+<h1>いいねボタン</h1>
+
+<button onclick={() => count++}>
+	いいね！ {count}
+</button>
+
+<button onclick={() => (count = 0)}>
+	リセット
+</button>
+```
+
+### これは何をしているか
+
+- このファイル**1つだけ**を編集しています
+- `let count = $state(0)` … 「**変わる数**を入れる箱」を作る（くわしくは [$state](/docs/svelte/state)）
+- `<button onclick={() => count++}>` … 押すと数字が **1 増える**
+- `<button onclick={() => (count = 0)}>` … 押すと **0 にリセット**
+- `{count}` … 今の値が画面に出る
+
+ファイルを保存すると、**ブラウザが自動でリロード**して、動作が確認できます。
+
+## 練習2：名前入力
+
+同じ `src/routes/+page.svelte` を、こんどはこう書きかえてみます。
+
+```svelte
+<script lang="ts">
+	let name = $state('');
+</script>
+
+<h1>名前入力</h1>
+
+<input bind:value={name} placeholder="名前を入力" />
+
+{#if name}
+	<p>こんにちは、{name}さん</p>
+{:else}
+	<p>名前を入力してください</p>
+{/if}
+```
+
+### これは何をしているか
+
+- `let name = $state('')` … 「**変わる文字**を入れる箱」（→ [$state](/docs/svelte/state)）
+- `bind:value={name}` … 「**入力欄と `name` をひもでつなぐ**」（→ [bind](/docs/svelte/bind)）
+- `{#if name}` … 「**名前が入っているとき**だけ」表示する（→ [`{#if}`](/docs/svelte/if)）
+- `{:else}` … 「そうじゃなかったとき」の表示
+
+このページに必要な道具は、すべて**過去の章で1つずつ説明**しています。
+もし読んでいて「あれ？」と思ったら、リンクから戻って復習すれば OK です。
+
+## 2ページ目が欲しくなったらフォルダを作る
+
+最初の練習をいくつかして、「**別のページにも置きたいな**」と思ったら、ここで初めて**フォルダを作ります**。
+
+```bash
+src/routes/
+├─ +page.svelte        → /
+├─ like/
+│  └─ +page.svelte     → /like
+└─ hello/
+   └─ +page.svelte     → /hello
+```
+
+「**フォルダの名前 ＝ URL**」になります。
+**ファイル名は必ず `+page.svelte`** を守ること。これだけです。
+
+> 最初は不要。**1つのトップページに全部書いて、行き詰まったら分ける**——その順番が一番ラクです。
+
+## いつ新しいフォルダを作るの？
+
+| やりたいこと | どこに書く？ |
+| --- | --- |
+| **1つだけ試したい** | `src/routes/+page.svelte`（**今のトップ**を書きかえるだけ） |
+| **`/like` という練習ページが欲しい** | `src/routes/like/+page.svelte`（フォルダを作る） |
+| **`/hello` という練習ページが欲しい** | `src/routes/hello/+page.svelte`（フォルダを作る） |
+| **部品（ボタンやカードなど）を分けたい** | `src/lib/components/` に置くことが多い |
+
+> でも、繰り返しますが——**最初は `+page.svelte` だけで OK** です。
+
+## 練習用ページを作るおすすめ構成
+
+「**既存のトップページ（`/`）を壊したくない**」と感じる人へ、おすすめの逃げ道を1つ。
+
+```bash
+src/routes/practice/
+└─ +page.svelte
+```
+
+これで `/practice` という**練習用ページ**ができます。
+**トップページは無傷のまま**、`/practice` でいろいろ試せます。
+
+```svelte
+<!-- src/routes/practice/+page.svelte -->
+<script lang="ts">
+	let count = $state(0);
+</script>
+
+<h1>練習部屋</h1>
+<button onclick={() => count++}>{count}</button>
+```
+
+ブラウザで `http://localhost:5173/practice` を開けば、確認できます。
+**サイトの本体には一切影響しません。**
+
+## よくある不安
+
+### Q. 既存のトップページを壊しそうで怖いです
+
+A. その場合は、**新しく `src/routes/practice/+page.svelte` を作りましょう**。
+トップページ（`/`）はそのまま残るので、安心して `/practice` でだけ実験できます。
+
+### Q. 新しいファイル名は何でもいいですか？
+
+A. **ページにしたいなら `+page.svelte` という名前が必要**です。
+頭に `+` が付くこと、`.svelte` で終わること、この2つだけ守れば OK。
+（`Page.svelte` とか `index.svelte` だとページにはなりません。）
+
+### Q. フォルダ名がそのまま URL になるんですか？
+
+A. **はい**。
+`src/routes/about/+page.svelte` は **`/about`** に、
+`src/routes/blog/hello/+page.svelte` は **`/blog/hello`** になります。
+URL は**フォルダの形と同じ**になる、と覚えてください。
+
+### Q. dev サーバーはどこで起動しますか？
+
+A. `package.json` がある**プロジェクトのルート**で、
+
+- npm なら `npm run dev`
+- pnpm なら `pnpm dev`
+- bun なら `bun run dev`
+
+を実行します。今のプロジェクトで使っている **package manager** に合わせて選んでください（`bun.lock` があるなら bun、`pnpm-lock.yaml` があるなら pnpm、など）。
+
+### Q. 保存したのに画面が変わりません
+
+A. dev サーバーが**起動しているか**を、まず確認してください。
+ターミナルに `Local: http://localhost:5173/` のような表示が出ていれば動いています。
+それでも反映されないときは、**ブラウザを再読み込み（⌘R / Ctrl+R）**してみましょう。
+
+### Q. `<script>` のなかに何を書いていいかわかりません
+
+A. **JavaScript / TypeScript のコード**です。`let`・`const`・関数・型などを書けます。
+わからなくなったら [$state](/docs/svelte/state) や [型は名札](/docs/typescript/types) を1分だけ見にいけば OK。
+
+## 実務では何につながる？
+
+「**`+page.svelte` だけで小さく試す**」という考え方は、実務でもずっと使います。
+
+- **小さな動作確認** … 新しい API の戻り値を表示してみる
+- **UI 部品の試作** … カード・モーダル・トーストの見た目調整
+- **練習ページ** … 新メンバーの SvelteKit 慣らし
+- **管理画面の仮作成** … `/admin/draft` などで雑に作って、あとで本番ページへ移植
+- **既存ページを壊さず試す作業** … 別フォルダに `practice` 用ページを分けておくと安心
+
+> プロでも「**新しいことをするときは、まず別ページで小さく試す**」のは同じ。
+> 「**+page.svelte だけ触ればOK**」は、実は実務でもいちばん早く動ける書き方です。
+
+## 今日のまとめ
+
+- まずは **`src/routes/+page.svelte` だけ**触ればOK
+- フォルダ＝URL（`/about` を作りたいなら `src/routes/about/`）
+- 既存ページを壊したくないときは **`src/routes/practice/+page.svelte`** を作る
+- ファイル名は **`+page.svelte`**（頭に `+`、末尾に `.svelte`）
+- dev サーバーは `package.json` のあるルートで `... run dev`
+
+## 今はここだけでOK
+
+「**コードを書く場所**」で迷ったら、**`src/routes/+page.svelte` を開く**。
+それで足りなくなってから、フォルダを増やせばOK。
+**ぜんぶ最初から考えなくていい**んです。
+
+## 次に作る小さな練習
+
+- `src/routes/practice/+page.svelte` を**新しく作る**
+- 上の **「練習1：いいねボタン」** をそのまま貼って、`/practice` で動かしてみる
+- 同じファイルを **「練習2：名前入力」** に書きかえて、また `/practice` で確認する
+- ボタンと入力欄を**両方**同じページに置いてみる
+- 慣れてきたら、`src/routes/like/+page.svelte` も作って、ボタンを `/like` に引っ越してみる

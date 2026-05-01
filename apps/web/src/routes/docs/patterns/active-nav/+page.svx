@@ -1,0 +1,145 @@
+---
+title: 今いるページのメニューに下線を付ける
+name: 現在地メニューに下線を付ける
+description: 「自分が今どこにいるか」がパッと見でわかるナビは、ユーザーにやさしい基本パターンです。page.url.pathname と aria-current でシンプルに作れます。
+category: 実務パターン集
+order: 10
+---
+
+ナビの中で、**今いるページのメニューだけ下線を引く**——
+これは、Docs サイトでも、自治会サイトでも、管理画面でも、**毎回必ず**作るパターンです。
+
+## たとえ話：地図の「現在地」マーク
+
+ショッピングモールの案内図に「**現在地**」と書かれた赤い印がありますよね。
+あれがあるだけで、迷わずに済みます。
+
+ナビメニューも同じです。
+「**今いるページ**」がパッと見でわかるだけで、ユーザーは安心します。
+
+## 仕組みのキモ
+
+ポイントは、たった2つだけです。
+
+1. **今のURLを取る** … `page.url.pathname`
+2. **そのURLと一致するメニューに印をつける** … `aria-current` または `class:`
+
+## いちばん小さな例
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script lang="ts">
+	import { page } from '$app/state';
+
+	let { children } = $props();
+
+	const isActive = (href: string) => page.url.pathname === href;
+</script>
+
+<nav>
+	<a href="/" aria-current={isActive('/') ? 'page' : undefined}>ホーム</a>
+	<a href="/about" aria-current={isActive('/about') ? 'page' : undefined}>About</a>
+	<a href="/news" aria-current={isActive('/news') ? 'page' : undefined}>お知らせ</a>
+</nav>
+
+{@render children()}
+
+<style>
+	a[aria-current='page'] {
+		text-decoration: underline;
+		color: tomato;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `page.url.pathname` … 今のURLのパス（例：`/about`）
+- `isActive(href)` … 「リンク先と今のURLが同じか？」を返す関数
+- `aria-current="page"` … 「**今このページにいますよ**」というしるし
+- `<style>` の `a[aria-current='page']` … そのしるしが付いたリンクだけ下線＋赤色
+
+`<a>` 自体は普通のリンクですが、**「現在地」マークを付けるだけで**見た目が変わります。
+
+## なぜ `class:active` ではなく `aria-current` ?
+
+両方使えますが、`aria-current` には**おまけ**があります。
+
+| 方法 | 見た目を変える | 読み上げ機能（スクリーンリーダー） |
+| --- | --- | --- |
+| `class:active` | OK | ふつうのリンクとして読み上げられる |
+| `aria-current="page"` | OK（`a[aria-current='page']` で） | 「**現在のページ**」と読み上げてくれる |
+
+つまり `aria-current` は、**目で見えない人にもやさしい**書き方です。
+実務ではこちらをおすすめします。
+
+> 両方つけてもOK：`class:active={isActive(href)} aria-current={isActive(href) ? 'page' : undefined}`
+
+## class: 構文を使うパターン
+
+`class:` を使うと、もうちょっとカジュアルに書けます。
+
+```svelte
+<a href="/" class:active={isActive('/')}>ホーム</a>
+
+<style>
+	a.active {
+		text-decoration: underline;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `class:active={条件}` … 条件が真のときだけ `class="active"` が付く
+- CSS は `.active` を見て下線を付ける
+
+## 「同じ階層なら印をつける」応用
+
+「`/news` でも `/news/2025` でも `お知らせ` メニューに印を付けたい」
+そんなときは、**前方一致**で見ます。
+
+```svelte
+<script lang="ts">
+	import { page } from '$app/state';
+
+	const startsWith = (prefix: string) => page.url.pathname.startsWith(prefix);
+</script>
+
+<a href="/news" aria-current={startsWith('/news') ? 'page' : undefined}>お知らせ</a>
+```
+
+### これは何をしているか
+
+- `startsWith('/news')` … 今のURLが `/news` で始まっていれば真
+- `/news`, `/news/2025`, `/news/2025/01` どれでも下線が付く
+
+ただし `/news` と `/newsletter` のように**他の URL とぶつからない**ように注意してください。
+不安なときは `/news` か `/news/...` のどちらかで判定（`pathname === '/news' || pathname.startsWith('/news/')`）と書くのが安全です。
+
+## 実務でよく使う場面
+
+- **Docs サイトのサイドバー** … 今読んでいる記事だけハイライト
+- **自治会・お知らせサイトのナビ** … 「**お知らせ**」「**イベント**」「**会員ページ**」
+- **管理画面の左メニュー** … 「**商品管理**」「**ユーザー管理**」「**売上**」
+- **ヘッダーのタブ** … 「**ホーム**」「**ニュース**」「**About**」
+
+> このサイトの左サイドバーも、いま読んでいる記事だけ色が変わっています。中の仕組みは、これと同じ考え方です。
+
+## 今日のまとめ
+
+- 「現在地メニュー」は、`page.url.pathname` と一致するリンクに**しるし**を付けるだけ
+- 推奨は `aria-current="page"` + CSS（`a[aria-current='page']`）
+- `class:active` でもOK。両方つければ「見た目」も「読み上げ」も両立
+- 同じ階層全部に印をつけたいなら `startsWith` で前方一致
+
+## 今はここだけでOK
+
+`<a href={...} aria-current={page.url.pathname === ... ? 'page' : undefined}>` の形を
+**1つだけ**まず書いてみる。CSS で下線を引く。それで十分。
+
+## 次に作る小さな練習
+
+- `+layout.svelte` にナビを書いて、`/`・`/about`・`/news` の3つに現在地下線を付ける
+- `aria-current` を `class:active` に書きかえて、両方の書き味を比べる
+- お知らせ詳細 `/news/[slug]` に行っても、ナビの「**お知らせ**」が下線になるよう前方一致で判定する

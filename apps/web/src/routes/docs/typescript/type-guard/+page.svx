@@ -1,0 +1,321 @@
+---
+title: 型ガードは「安全確認してから使う」
+name: 型ガード
+description: api-response 章の e instanceof Error と unknown を回収する章。APIレスポンス・JSON.parse・localStorage・外部入力など、外から来る値を安全に絞り込んで使うための実務パターンをまとめます。
+category: TypeScript 実践基本
+order: 80
+---
+
+## ひとことで言うと
+
+**型ガード**は、ひとことで言うと
+
+> **「本当にその型か？」を確認してから安全に使うための書き方**
+
+です。
+**外から来る値**（API・localStorage・URL・フォーム）を扱うときの**お守り**になります。
+
+## たとえ話：知らない荷物が届いたら
+
+知らない荷物が届いたとき、**いきなり開けて使う**のは危ないですよね。
+まず「**これは本当に本ですか？**」「**これは本当にりんごですか？**」と確認してから取り出します。
+
+| 動き | コード |
+| --- | --- |
+| 「**この値は文字ですか？**」 | `typeof value === 'string'` |
+| 「**これは本当に Error の仲間ですか？**」 | `e instanceof Error` |
+| 「**title という項目を持っていますか？**」 | `'title' in value` |
+| 「**これは Notice 型ですか？**」 | カスタム型ガード `isNotice(value)` |
+
+「**確認してから取り出す**」のが、TypeScript で安全にデータを扱うコツです。
+
+## unknown とは？
+
+`unknown` は **「中身がまだわからない箱」** です。
+`any` と似ていますが、**ぜんぜん違う**性格を持ちます。
+
+| 型 | 何ができる？ | 安全さ |
+| --- | --- | --- |
+| `any` | **何でもできる**（`.foo()` も `.length` も書ける） | **危険**（実行時にエラーが出やすい） |
+| `unknown` | **確認するまでほぼ何もできない** | **安全**（確認を強制してくれる） |
+
+```ts
+let value: unknown = 'hello';
+
+// ❌ これは TypeScript が止めてくれる
+// value.toUpperCase();
+
+// ✅ 確認してから使う
+if (typeof value === 'string') {
+	console.log(value.toUpperCase());
+}
+```
+
+### これは何をしているか
+
+- `unknown` … **何が入っているかわからない箱**
+- 直接 `.toUpperCase()` を呼ぶと**エラー**
+- `typeof value === 'string'` で確認すると、`if` の中では `value` が `string` として扱える
+- これが**型ガード**の最小形
+
+> **「外から来た値はまず `unknown` で受ける」** が、安全な書き方の出発点です。
+
+## typeof の型ガード
+
+`typeof` は基本の型ガード。`'string'` / `'number'` / `'boolean'` などを判定できます。
+
+```ts
+function formatValue(value: unknown): string {
+	if (typeof value === 'string') {
+		return value;
+	}
+
+	if (typeof value === 'number') {
+		return `${value}件`;
+	}
+
+	return '不明な値です';
+}
+```
+
+### これは何をしているか
+
+- `value` は `unknown`（何でも来る可能性がある）
+- `typeof value === 'string'` の中では `value` が **`string` 型**として扱える
+- `typeof value === 'number'` の中では **`number` 型**
+- どれにも当てはまらないときは「不明」を返す
+
+> 実務では、**API・フォーム・URL クエリなど外から来る値**でよく使います。
+
+## instanceof Error
+
+[APIレスポンス](/docs/typescript/api-response) 章で出てきた `e instanceof Error` を、ここで本格回収します。
+
+```ts
+try {
+	throw new Error('失敗しました');
+} catch (e: unknown) {
+	if (e instanceof Error) {
+		console.log(e.message);
+	} else {
+		console.log('不明なエラーです');
+	}
+}
+```
+
+### これは何をしているか
+
+- `catch (e: unknown)` … **モダンな TS の標準**（昔は `any` だった）
+- `e instanceof Error` … 「**`e` は Error の仲間か？**」を確認
+- OK なら `e.message` が**安全に**読める
+- そうでないときも別の処理で返せる
+
+> `throw` できるのは Error だけではありません。**文字列や数字やオブジェクトも投げられる**のが JavaScript の仕様なので、**`Error` とは限らない**前提で書くのが安全です。
+
+## in を使う型ガード
+
+オブジェクトに**特定のプロパティがあるか**を確認するときに `in` を使います。
+
+```ts
+function hasTitle(value: unknown): value is { title: string } {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'title' in value &&
+		typeof (value as { title: unknown }).title === 'string'
+	);
+}
+```
+
+### これは何をしているか
+
+- `typeof value === 'object'` だけでは **`null` も含む**ので注意（JS の有名な罠）
+- `value !== null` で `null` を除外
+- `'title' in value` … `value` に `title` というプロパティがある
+- `typeof ... === 'string'` … その `title` が**文字**である
+- **`value is { title: string }`** が**カスタム型ガード**の印（後述）
+
+> 「**`'title' in value`**」は、union 型を絞りこむ時にも便利。
+> たとえば `{ kind: 'a' } | { kind: 'b'; foo: string }` なら、`'foo' in value` で後者だと判定できます。
+
+## カスタム型ガード（is で名札を付ける）
+
+「**この関数が `true` を返したら、この型として扱っていい**」という宣言が `value is T` です。
+
+```ts
+type Notice = {
+	slug: string;
+	title: string;
+	excerpt: string;
+};
+
+function isNotice(value: unknown): value is Notice {
+	if (typeof value !== 'object' || value === null) return false;
+	const v = value as Record<string, unknown>;
+	return (
+		typeof v.slug === 'string' &&
+		typeof v.title === 'string' &&
+		typeof v.excerpt === 'string'
+	);
+}
+```
+
+### これは何をしているか
+
+- 関数の戻り値が **`value is Notice`** … 「**`true` なら呼び出し側で `value` を `Notice` として扱える**」
+- `Record<string, unknown>` … 「キーは文字、値は何でも」のオブジェクト型
+- 中で **3つのプロパティ**がすべて文字かチェック
+- 1つでも違ったら `false`
+
+> この `value is Notice` の仕組みが、TypeScript の**型ガードの主役**です。
+> 「**確認する関数**」を1つ作っておけば、サイト中で**安全な絞りこみ**を書けるようになります。
+
+## APIレスポンスで安全に使う
+
+[Generics](/docs/typescript/generics) 章で見た `fetchJson<T>` は便利ですが、**`as T` だけでは中身を確認していない**——実は形が違っていてもバグります。
+そこで、**型ガードで確認してから使う**版を作ります。
+
+```ts
+async function fetchNotice(url: string): Promise<Notice> {
+	const res = await fetch(url);
+	const data: unknown = await res.json();
+
+	if (!isNotice(data)) {
+		throw new Error('お知らせデータの形が違います');
+	}
+
+	return data;
+}
+```
+
+### これは何をしているか
+
+- `data: unknown` … **まず `unknown` として受け取る**（信用しない）
+- `isNotice(data)` … **形を確認**
+- OK なら `Notice` として返す
+- ダメなら**エラーで止める**
+
+> [+server.ts](/docs/sveltekit/api-routes) で**自分が作った API**なら形は信用できますが、**外部 API・古い API・将来形が変わるもの**には、こうした型ガードを挟むと安心です。
+
+## 配列を確認する型ガード
+
+「**Notice の配列**」かを確認するなら、**1件の `isNotice` を組み合わせる**だけ。
+
+```ts
+function isNoticeArray(value: unknown): value is Notice[] {
+	return Array.isArray(value) && value.every(isNotice);
+}
+```
+
+### これは何をしているか
+
+- `Array.isArray(value)` … **配列かどうか**を判定する組み込み関数
+- `value.every(isNotice)` … **すべての要素が Notice か**を確認
+- 1つでも違えば `false`
+- すべて OK なら、`value` を **`Notice[]` として扱える**
+
+> 「**1件の型ガード → every で配列に拡張**」は、**実務の鉄板パターン**です。
+> [お知らせ一覧](/docs/examples/notice-board) のような一覧データを取ってくるときに重宝します。
+
+## localStorage や JSON.parse でも
+
+[Todo localStorage版](/docs/examples/todo-localstorage) で出てきた **`JSON.parse` の結果**は、実は**信用しすぎない**ほうが安全です。
+
+```ts
+const raw = localStorage.getItem('todos');
+
+if (raw) {
+	try {
+		const data: unknown = JSON.parse(raw);
+		if (isTodoArray(data)) {
+			todos = data;
+		} else {
+			todos = []; // 形が違うので諦める
+		}
+	} catch {
+		todos = []; // パース失敗
+	}
+}
+```
+
+### これは何をしているか
+
+- `JSON.parse(raw)` の戻りは本来 `any` 扱いだが、**`unknown` として受ける**のが安全
+- 自分が書いたコード以外（**前のバージョン・他のタブ・ブラウザ拡張**）が localStorage を書きかえているかもしれない
+- 形が違えば**諦めて初期化**する
+- これで「**昔のバージョンのデータが残っていたとき画面が壊れる**」のを防げる
+
+> Todo localStorage版では簡略化して `JSON.parse` の結果を**そのまま**信用していました。
+> 実務に育てるとき、**`isTodoArray` で確認する版**にレベルアップさせるのがおすすめです。
+
+## 使いすぎ注意
+
+型ガードは強力ですが、**全部に書く必要はありません**。
+
+| 値の出どころ | 型ガードを書く？ |
+| --- | --- |
+| **自分が書いたコードの中だけ**で扱う値 | **不要**（型を信じてOK） |
+| **API のレスポンス**（特に外部 API） | **書くと安全** |
+| **`JSON.parse` の結果** | **書くと安全** |
+| **`localStorage`・`sessionStorage` から復元** | **書くと安全** |
+| **URL クエリ・フォーム入力** | **書くと安全**（特に数値変換まわり） |
+| **Webhook 受信** | **必須レベル** |
+
+> 迷ったら：「**この値、自分のコード以外から来てない？**」と問う。**Yes なら型ガード**を考える。
+
+## 本格運用なら zod / valibot
+
+「**自分で `isNotice` を毎回書くのは大変**」と感じたら、**バリデーションライブラリ**の出番です。
+
+| ライブラリ | 特徴 |
+| --- | --- |
+| **zod** | デファクトスタンダード。型と検証を**1度に書ける** |
+| **valibot** | zod より**軽量**。SvelteKit との相性も良い |
+
+> このサイトは入門なので **「`as T` か、自作の型ガード」** を中心にしました。
+> 「**書く量が増えてきたな**」と感じたら zod / valibot に置きかえると、**型と検証が自動で揃う**ようになります。
+
+## 実務では何に使う？
+
+- **APIレスポンスの確認** … 特に外部 API
+- **JSON.parse の結果確認** … localStorage や Cookie の復元
+- **localStorage / sessionStorage の復元** … 古いバージョンのデータ対策
+- **Webhook の受信** … Stripe・GitHub からの通知
+- **URL クエリの解釈** … `?page=2` の `2` は本当に数値？
+- **フォームの送信値** … 文字 → 数値の変換が成功したか
+- **エラー処理** … `e instanceof Error` で `e.message` を安全に
+- **外部サービス連携** … 形が変わるリスクに備える
+
+## 既存記事との接続
+
+| 場面 | 既存章 | この章での回収 |
+| --- | --- | --- |
+| `e instanceof Error` | [APIレスポンス](/docs/typescript/api-response) | 専用例で深掘り＋ `unknown` の意味 |
+| `as SearchResponse` | [APIレスポンス](/docs/typescript/api-response)・[Generics](/docs/typescript/generics) | **`as` は実は確認していない**ことを明示し、`isNotice` で安全版を提示 |
+| `fetchJson<T>` | [Generics](/docs/typescript/generics) | **`fetchNotice`** で型ガード付きに発展 |
+| `JSON.parse` | [Todo localStorage版](/docs/examples/todo-localstorage) | **`isTodoArray` での確認**に育てる道筋 |
+| Union の絞りこみ | [Union / Literal](/docs/typescript/union-literal) | `'kind' in value` で union を絞る発展先 |
+
+## 今日のまとめ
+
+- 型ガードは「**本当にその型か？を確認してから使う**」書き方
+- **`unknown`** は「中身がまだわからない箱」（`any` より安全）
+- 基本：**`typeof`** / **`instanceof`** / **`in`**
+- 自作：**`function isXxx(value): value is Xxx`** で**カスタム型ガード**
+- API・JSON.parse・localStorage・Webhook など**外から来る値**には型ガードを挟む
+- 量が増えたら **zod / valibot** などのバリデーションライブラリに置きかえる
+
+## 今はここだけでOK
+
+> **「外から来た値はまず `unknown`、確認してから使う」**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- `typeof value === 'string'` の `if` を書いて、`value.toUpperCase()` が安全に呼べることを確認する
+- `e instanceof Error` を**白紙で書く**（`try / catch` の中で）
+- `isNotice(value: unknown): value is Notice` を**写して**、3行目から自分の言葉で説明できるか試す
+- `fetchNotice(url)` の流れを**紙に書く**（fetch → unknown → isNotice → throw or return）
+- [Todo localStorage版](/docs/examples/todo-localstorage) の `loadInitial` を、`isTodoArray` 付きに**書きかえる**
+- [検索リスト](/docs/examples/search-list) のサーバー検索版で、`fetchJson<SearchResponse>` を `isSearchResponse` で確認する版にする

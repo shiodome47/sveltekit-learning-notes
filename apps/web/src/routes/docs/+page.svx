@@ -1,43 +1,53 @@
 ---
-title: MDSVEX Text Components
-name: Text Components
-description: Reference samples for heading, paragraph, link, inline code, blockquote, divider, lists, and fenced code.
-category: Reference
+title: このサイトについて
+name: このサイトについて
+description: Svelte / SvelteKit / TypeScript を、小学生にもわかるくらいやさしく学ぶための、自分専用の学習ノートです。
+category: はじめに
 order: 10
 ---
 
-This page is a compact reference for markdown-to-component mappings used in this documentation app.
+ようこそ！
+このサイトは「**Svelte / SvelteKit / TypeScript** を、小学生にもわかるくらいやさしく学ぶ」ことだけを目的にした、自分専用の学習ノートです。
 
-# H1 sample
+## このサイトの3つのお約束
 
-## H2 sample
+1. **むずかしい言葉を、いきなり使わない**
+2. **たとえ話で、まずイメージをつかむ**
+3. **コードは短く。下に「これは何をしているか」を必ず書く**
 
-### H3 sample
+## どこから読めばいい？
 
-#### H4 sample
+最初の一歩は、左のサイドバーの「**Svelte 基本**」 → 「**$state は変わる値**」がおすすめです。
 
-> Blockquote sample: neutral note content for policies, caveats, or status notes.
+ボタンを押すと数字が増える、いちばん小さな例から始めます。
 
----
+## 各ページの読み方
 
-## Unordered list sample
+どのページも、次の3つで終わるようにしています。
 
-- First list item with **strong**.
-- Second list item with `inline code`.
-- Third list item with a [link](https://svelte.dev).
+- **今日のまとめ** — 一言でふり返る
+- **今はここだけでOK** — むずかしい話は後回し
+- **次に作る小さな練習** — 自分で手を動かしてみる
 
-## Ordered list sample
+「ぜんぶ覚えなきゃ！」と思わなくて大丈夫です。
+「**今日はこれだけ！**」を、毎日少しずつ増やしていくノートです。
 
-1. First ordered item.
-2. Second ordered item.
-3. Third ordered item.
+## 用語のたとえ早見表
 
-## Fenced code sample
+| 用語 | たとえ |
+| --- | --- |
+| `$state` | **変わる値**を入れる箱 |
+| `$derived` | 自動で**計算される値** |
+| `$effect` | 値が変わったら**動く処理** |
+| `props` | 親から子に**渡す手紙** |
+| `+page.svelte` | **ページ本体** |
+| `+layout.svelte` | みんな共通の**額縁** |
+| `load` | ページ表示前の**材料集め** |
+| `form actions` | フォームの**受付係** |
+| 型 (TypeScript) | これは何ですよ、という**名札** |
 
-```bash
-bun run --cwd apps/web check
-```
+## 今はここだけでOK
 
-```typescript
-type ComponentName = 'h1' | 'h2' | 'h3' | 'h4';
-```
+- このサイトは「やさしく学ぶノート」
+- 左のサイドバーから順番に読める
+- どのページも短い。ムリせず1日1ページでOK

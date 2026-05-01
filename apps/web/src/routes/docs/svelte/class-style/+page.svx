@@ -1,0 +1,234 @@
+---
+title: class と style は「見た目を変えるスイッチ」
+name: class / style：見た目を変える
+description: 状態に合わせて見た目を変える3つの道具——ふつうの class、条件付きの class:xxx、その場で値が決まる style:xxx——をまとめて整理します。Todo 3部作で使った class:done もここで読み解けるようになります。
+category: Svelte 実践基本
+order: 80
+---
+
+`class` と `style` は、ひとことで言うと
+
+> **「状態に合わせて見た目を変えるスイッチ」**
+
+です。
+
+## たとえ話：服とアクセサリー
+
+朝、出かける前に何を着るか考えますよね。
+
+- **ふだんの服** … 「**今日は学校だから制服**」（**class** ＝ いつもの見た目）
+- **ちょっとしたアクセサリー** … 「**今日は寒いから手袋**」（**style** ＝ その場で足す細かい指定）
+- **条件があるときだけ着るユニフォーム** … 「**運動会だから赤組**」（**`class:xxx`** ＝ スイッチで切り替わる服）
+
+`class` は決まった見た目。
+`style` はその場で書く細かい数値。
+`class:xxx` は **「条件が合ったときだけ着せる服」**です。
+
+## まずは普通の class
+
+いちばん基本の `class` は、HTML と同じです。
+
+```svelte
+<button class="primary">送信</button>
+
+<style>
+	.primary {
+		background: tomato;
+		color: white;
+		padding: 0.5rem 1rem;
+		border-radius: 0.5rem;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `class="primary"` … 「このボタンは **primary という服** を着る」
+- `<style>` の `.primary` … その服のデザイン
+- 同じ見た目を**何個でも使い回せる**
+
+これだけだと普通の HTML と変わりません。Svelte の本領は次から。
+
+## class:xxx は「条件付きの服」
+
+Svelte の特技が、この **`class:xxx`** です。
+
+```svelte
+<script lang="ts">
+	let { todo } = $props<{ todo: { text: string; done: boolean } }>();
+</script>
+
+<li class:done={todo.done}>
+	{todo.text}
+</li>
+
+<style>
+	.done {
+		opacity: 0.5;
+		text-decoration: line-through;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `class:done={todo.done}` … 「**`todo.done` が `true` のときだけ** `class="done"` を付ける」
+- `false` のとき → `class=""`（何も付かない）
+- `true` のとき → `class="done"`（薄くなって、線が引かれる）
+
+「**条件によって服を着せ替える**」という Svelte の気持ちいい書き味です。
+
+> **`{ class: todo.done ? 'done' : '' }`** みたいな計算を**自分で書かなくていい**のがポイントです。
+
+## class:xxx の短縮形
+
+「**変数の名前と class 名がぴったり同じ**」なら、もっと短く書けます。
+
+```svelte
+<li class:done>
+	{todo.text}
+</li>
+```
+
+### これは何をしているか
+
+- `class:done` … 「**`done` という変数が真なら**、`class="done"` を付ける」
+- 上の `class:done={done}` の省略形
+
+ただしこれは「`done` という名前の `$state` や `props` が**そのままある**」場合に限られます。
+迷ったときは長い形（`class:done={todo.done}`）の方が**読みやすい**です。
+
+## `class={{ ... }}` のオブジェクト形式（さらっと）
+
+複数の条件を一度に切り替えたいとき、**オブジェクト形式**も使えます。
+
+```svelte
+<li class={{ done: todo.done, urgent: todo.urgent }}>
+	{todo.text}
+</li>
+```
+
+### これは何をしているか
+
+- `done: todo.done` … `todo.done` が真なら `done` を付ける
+- `urgent: todo.urgent` … `todo.urgent` が真なら `urgent` を付ける
+- 両方真なら `class="done urgent"`、片方だけなら片方だけ
+
+> 今は「**こんな書き方もある**」とだけ覚えておけば OK。
+> ふだんは `class:xxx` を1つずつ並べる方が読みやすいです。
+
+## style:プロパティ は「その場で値を入れる」
+
+CSS の値そのものを **JavaScript の値で動かしたい**とき、`style:xxx` を使います。
+
+```svelte
+<script lang="ts">
+	let progress = $state(40);
+</script>
+
+<button onclick={() => (progress = Math.min(progress + 10, 100))}>進める</button>
+
+<div class="bar" style:width="{progress}%">
+	{progress}%
+</div>
+
+<style>
+	.bar {
+		background: tomato;
+		color: white;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.25rem;
+		transition: width 200ms;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `style:width="{progress}%"` … 「**幅** に `progress%` を入れる」
+- `progress` が変わるたびに、**バーの幅が自動で**変わる
+- CSS の `transition` を入れておくと、滑らかに動く
+
+`style:xxx` のうれしいところは、**変数の値をそのまま CSS に渡せる**こと。
+ボタンを押すたびに `progress` が増え、バーが伸びていきます。
+
+> 似た書き方に `style:color={isError ? 'red' : 'inherit'}` のような**条件付き色変え**もあります。`class:` でクラスを切り替えるか、`style:` で値を直接入れるか、**目的に合わせて選びます**。
+
+## 実務では何に使う？
+
+`class` / `style` の使いどころは、画面のあらゆるところに出てきます。
+
+| 使う場面 | 道具 | 例 |
+| --- | --- | --- |
+| **Todo が完了したら薄くする** | `class:done` | Todo 3部作で使っているやつ |
+| **現在地メニューに下線を付ける** | `class:active` または `aria-current` | [現在地メニューに下線](/docs/patterns/active-nav) |
+| **エラー時に枠を赤くする** | `class:error` | フォームのバリデーション |
+| **disabled 中にボタンを薄くする** | `class:disabled` または属性 `disabled` + CSS | `<button disabled={!ok}>` |
+| **選択中のカードを目立たせる** | `class:selected` | リストUIで「今これを選んでます」 |
+| **ダークモードの切り替え** | ルート要素に `class:dark` | `<html class:dark={isDark}>` |
+| **進捗バー** | `style:width` | アップロード％、ロード中の表示 |
+| **チャートの色を動的に** | `style:color` | グラフの色を値に応じて変える |
+
+## Todo 3部作とのつながり
+
+このサイトの Todo 例3つは、**全部この章の `class:done` を使っています**。
+
+- [Todo アプリ（ローカル状態）](/docs/examples/todo)
+- [Todo localStorage版](/docs/examples/todo-localstorage)
+- [Todo server版](/docs/examples/todo-server)
+
+各ページのプレビューに出てくる、
+
+```svelte
+<li class:done={todo.done}>
+	<label>
+		<input type="checkbox" bind:checked={todo.done} />
+		<span>{todo.text}</span>
+	</label>
+</li>
+```
+
+の `class:done={todo.done}` こそが、この章の主役です。
+
+- [`bind:checked`](/docs/svelte/bind) でチェックボックスと `todo.done` をひもでつなぐ
+- `class:done={todo.done}` で **`done` が `true` のときだけ薄く**する
+- CSS の `.done { opacity: 0.45; text-decoration: line-through; }` が**見た目の中身**
+
+「**[$state](/docs/svelte/state) → `bind` → `class:done` → CSS**」の流れが、
+**チェックを入れた瞬間にスーッと薄くなる**気持ちよさを作っています。
+
+## class と style の使い分け
+
+迷ったらこの表で OK です。
+
+| こうしたい | 使う道具 | 例 |
+| --- | --- | --- |
+| **いつも同じ見た目**（クラス名固定） | `class="..."` | `class="card"` |
+| **条件で見た目を ON/OFF** | `class:xxx` | `class:done={todo.done}` |
+| **複数の条件をまとめて** | `class={{ ... }}` | `class={{ done, urgent }}` |
+| **その場で数値が変わる** | `style:xxx` | `style:width="{p}%"` |
+
+> **目安**：「**何度も使う見た目** → `class`」「**条件で出し入れ** → `class:xxx`」「**変わる数値** → `style:xxx`」
+> ほとんどの画面はこの3つで足ります。
+
+## 今日のまとめ
+
+- `class` … いつもの見た目
+- `class:xxx` … **条件付きの見た目スイッチ**（Svelte の特技）
+- `class={{ ... }}` … 複数条件をまとめて切り替える書き方
+- `style:xxx` … **その場で値を入れる**（数値が動くもの向き）
+- Todo 3部作の **「完了で薄くなる」** は、すべて `class:done` の力
+
+## 今はここだけでOK
+
+「**条件で見た目を変えたい**」と思ったら `class:xxx`。
+「**動く数値を CSS に渡したい**」と思ったら `style:xxx`。
+この2つだけ覚えれば、画面の見た目は**自由に動かせます**。
+
+## 次に作る小さな練習
+
+- [Todo アプリ](/docs/examples/todo) の `<li class:done={todo.done}>` を、`class:done`（短縮形）に書きかえてみる
+- 「重要」フラグを足して、`class={{ done: todo.done, urgent: todo.urgent }}` で**2色**に変えてみる
+- ボタンを押すと `progress` が `+10` 増える進捗バーを、`style:width="{progress}%"` で作ってみる
+- ダークモードのトグルを、ルート要素の `class:dark={isDark}` で作ってみる（[$effect](/docs/svelte/effect) で localStorage に保存できれば完璧）
+- [`{#each}`](/docs/svelte/each) で並べたカード一覧で、選択中だけ `class:selected={card.id === selectedId}` で目立たせてみる

@@ -1,0 +1,581 @@
+---
+title: Todoをサーバーに保存しよう
+name: Todo server版
+description: ローカルでもlocalStorageでもなく、サーバー側でTodoを保存する版。SvelteKit の load・form actions・named actions・fail・use:enhance まで、実例で覚えます。
+category: 小さなアプリ例
+order: 30
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import TodoServerDemo from './_TodoServerDemo.svelte';
+
+	const storeSource = `// src/lib/server/todos.ts
+//
+// サーバー側だけで使う「保存場所」。
+// $lib/server/ 以下に置くと、ブラウザには絶対に渡らない。
+// 今回はメモリで持つだけ。実務では DB（Postgres など）に置きかえる。
+
+export type Todo = {
+	id: number;
+	description: string;
+};
+
+let todos: Todo[] = [];
+let nextId = 1;
+
+export function getTodos(): Todo[] {
+	return todos;
+}
+
+export function createTodo(description: string): Todo {
+	const todo: Todo = { id: nextId++, description };
+	todos.push(todo);
+	return todo;
+}
+
+export function deleteTodo(id: number): void {
+	todos = todos.filter((t) => t.id !== id);
+}
+`;
+
+	const pageServerSource = `// src/routes/todos/+page.server.ts
+//
+// サーバー側でしか動かないコード。
+// load = ページ表示前の材料集め
+// actions = フォームの受付係
+
+import { fail } from '@sveltejs/kit';
+import { createTodo, deleteTodo, getTodos } from '$lib/server/todos';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return {
+		todos: getTodos()
+	};
+};
+
+export const actions: Actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const description = String(data.get('description') ?? '').trim();
+
+		if (description === '') {
+			return fail(422, {
+				error: 'やることを入力してください',
+				description
+			});
+		}
+
+		createTodo(description);
+		return { ok: true };
+	},
+
+	delete: async ({ request }) => {
+		const data = await request.formData();
+		const id = Number(data.get('id'));
+		deleteTodo(id);
+		return { ok: true };
+	}
+};
+`;
+
+	const pageSource = `<!-- src/routes/todos/+page.svelte -->
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	let { data, form } = $props();
+<\/script>
+
+<h1>やることリスト</h1>
+
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+
+<form method="POST" action="?/create" use:enhance>
+	<input
+		type="text"
+		name="description"
+		placeholder="やることを書く"
+		value={form?.description ?? ''}
+	/>
+	<button type="submit">追加</button>
+</form>
+
+{#if data.todos.length === 0}
+	<p>やることはまだありません 🎉</p>
+{:else}
+	<ul>
+		{#each data.todos as todo (todo.id)}
+			<li>
+				<span>{todo.description}</span>
+				<form method="POST" action="?/delete" use:enhance>
+					<input type="hidden" name="id" value={todo.id} />
+					<button type="submit" aria-label="{todo.description} を削除">×</button>
+				</form>
+			</li>
+		{/each}
+	</ul>
+{/if}
+`;
+</script>
+
+## ひとことで言うと
+
+サーバー保存版では、Todo を**ブラウザだけでなく、サーバー側の処理に送って保存**します。
+別の端末から見ても、別のブラウザから見ても、**みんなが同じ Todo を見られる**のがゴールです。
+
+主役は SvelteKit の `+page.server.ts` ／ [`load`](/docs/sveltekit/load) ／ [`form actions`](/docs/sveltekit/form-actions) です。
+
+## 今回のゴール
+
+- `load` で **Todo 一覧を読みこむ**
+- `form actions` で **Todo を追加する**
+- **named actions** で削除も扱う（同じページに2つ以上のフォーム）
+- `fail` でバリデーションエラーをやさしく返す
+- `use:enhance` でページ全体をリロードせずに送信する
+
+> このページは、[前回の Todo](/docs/examples/todo)・[localStorage 版](/docs/examples/todo-localstorage) と同じUIを、**保存場所だけサーバーに置きかえる**形で進みます。
+> 「**変えたのはここだけ**」がはっきり見えるよう、UI はあえてそのままです。
+
+## これまでの Todo との違い
+
+| 版 | 保存場所 | 閉じても残る？ | 別端末から見られる？ | 実務に近いか |
+| --- | --- | --- | --- | --- |
+| [ローカル版](/docs/examples/todo) | メモリ（タブの中だけ） | × | × | △ 練習向け |
+| [localStorage 版](/docs/examples/todo-localstorage) | ブラウザのメモ帳 | ◯（同じブラウザだけ） | × | ◯ 個人ツール向け |
+| **サーバー版（今回）** | **サーバー（メモリ→将来は DB）** | ◯ | ◯ | ◎ 業務アプリの基本 |
+
+「**みんなで同じ Todo を見たい**」と思った瞬間、答えは**サーバー保存**になります。
+
+## 完成プレビューと、実装する3ファイル
+
+下のプレビューはレイアウトのサンプルです（クリックしても何も起きません）。
+タブを切り替えると、**実際にこの画面を作る3ファイル**を順に読めます。
+
+<ComponentPreview
+	sources={[
+		{ name: 'src/lib/server/todos.ts', code: storeSource, language: 'typescript' },
+		{ name: 'src/routes/todos/+page.server.ts', code: pageServerSource, language: 'typescript' },
+		{ name: 'src/routes/todos/+page.svelte', code: pageSource, language: 'svelte' }
+	]}
+>
+	<TodoServerDemo />
+</ComponentPreview>
+
+## ファイル構成
+
+```bash
+src/
+├─ lib/
+│  └─ server/
+│     └─ todos.ts          ← サーバー側の保存処理
+└─ routes/
+   └─ todos/
+      ├─ +page.svelte      ← 画面（フォーム + 一覧）
+      └─ +page.server.ts   ← load と actions
+```
+
+役割を一言で：
+
+- `+page.svelte` … **画面（クライアント）**
+- `+page.server.ts` … **サーバーで動く load と actions**
+- `src/lib/server/todos.ts` … **保存場所**（メモリ→将来はDB）
+
+> `$lib/server/` の中に置いたファイルは、**ブラウザに絶対に渡りません**。秘密のデータや DB 接続コードを置く定位置です。
+
+ここからは **7ステップ**に分けて、それぞれの役わりを覚えていきます。
+
+<Steps>
+
+<Step title="Step 1：サーバー側の保存場所を作る">
+
+まず「**Todo を入れておく場所**」を作ります。
+今回はかんたんに**メモリ**で持ちます。実務では DB（Postgres など）に置きかえます。
+
+```ts
+// src/lib/server/todos.ts
+export type Todo = { id: number; description: string };
+
+let todos: Todo[] = [];
+let nextId = 1;
+
+export function getTodos(): Todo[] {
+	return todos;
+}
+
+export function createTodo(description: string): Todo {
+	const todo: Todo = { id: nextId++, description };
+	todos.push(todo);
+	return todo;
+}
+
+export function deleteTodo(id: number): void {
+	todos = todos.filter((t) => t.id !== id);
+}
+```
+
+### これは何をしているか
+
+- `type Todo = { ... }` … Todo の[名札（型）](/docs/typescript/types)
+- `getTodos()` … 一覧を読みだす
+- `createTodo(description)` … 1つ追加して、追加した Todo を返す
+- `deleteTodo(id)` … `id` で見つけて消す
+- 保存場所はとりあえず **`todos` という配列**
+
+> このファイルが `$lib/server/` の中にあることが大事。ブラウザには見えない**サーバー専用の引き出し**です。
+
+実務でDBにする時は、`getTodos` の中で `SELECT * FROM todos` を投げる、`createTodo` の中で `INSERT INTO todos ...` を投げる、というふうに**外側のインターフェースを保ったまま**置きかえられます。
+
+</Step>
+
+<Step title="Step 2：load で Todo 一覧を渡す">
+
+ページを開いた瞬間に、サーバーから一覧を持ってきて画面に渡します。これが [`load`](/docs/sveltekit/load) の出番です。
+
+```ts
+// src/routes/todos/+page.server.ts
+import { getTodos } from '$lib/server/todos';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return {
+		todos: getTodos()
+	};
+};
+```
+
+### これは何をしているか
+
+- `load` … **ページ表示前の材料集め**
+- `getTodos()` … 保存場所から一覧を取りだす
+- `return { todos: ... }` … 「**これを画面側で使ってね**」と渡す
+
+`+page.svelte` 側では、`let { data } = $props()` で受け取って `data.todos` を表示します。
+
+> `+page.server.ts` の `load` は**サーバーで動きます**。ブラウザに JavaScript が届く前に、HTML がもう一覧入りで生成されます（**SSR**）。
+
+</Step>
+
+<Step title="Step 3：form action で Todo を追加する">
+
+「追加」ボタンを押したら何が起きるか、を `actions` に書きます。
+これが [`form actions`](/docs/sveltekit/form-actions) の本番です。
+
+```ts
+// 同じ +page.server.ts の続き
+import { createTodo } from '$lib/server/todos';
+import type { Actions } from './$types';
+
+export const actions: Actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const description = String(data.get('description') ?? '').trim();
+
+		createTodo(description);
+		return { ok: true };
+	}
+};
+```
+
+```svelte
+<form method="POST" action="?/create">
+	<input type="text" name="description" />
+	<button>追加</button>
+</form>
+```
+
+### これは何をしているか
+
+- `actions.create` … **「create という名札の受付係」**
+- `request.formData()` … 送られてきたフォームの中身を取り出す
+- `data.get('description')` … `<input name="description">` の値を取りだす
+- `String(... ?? '').trim()` … 念のため文字に変換して、前後の空白を消す
+- `createTodo(description)` … 保存場所に追加する
+- `<form action="?/create">` … 「**`create` の受付係に送ってね**」
+
+> `<input name="description">` の `name` と `data.get('description')` の文字が**完全に一致**している必要があります。**名札がついた箱**だと考えると忘れません。
+
+</Step>
+
+<Step title="Step 4：fail でエラーをやさしく返す">
+
+「**やること**」が空のまま送信されたら、エラーで返します。
+ここで使うのが `fail(...)` です。
+
+```ts
+import { fail } from '@sveltejs/kit';
+
+create: async ({ request }) => {
+	const data = await request.formData();
+	const description = String(data.get('description') ?? '').trim();
+
+	if (description === '') {
+		return fail(422, {
+			error: 'やることを入力してください',
+			description
+		});
+	}
+
+	createTodo(description);
+	return { ok: true };
+}
+```
+
+### これは何をしているか
+
+- `fail(422, { ... })` … 「**422 番のエラー**」と「**画面に渡したい情報**」をセットで返す
+- `error: '...'` … 表示するメッセージ
+- `description` … **入力した文字も一緒に返す**（次でフォームに戻すために使う）
+
+`+page.svelte` 側では `let { form } = $props()` で受け取って、こう書きます。
+
+```svelte
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+
+<input type="text" name="description" value={form?.description ?? ''} />
+```
+
+### これは何をしているか
+
+- `form` … `actions` の `return` でもらった荷物
+- `form?.error` … エラーがあるときだけメッセージを出す
+- `value={form?.description ?? ''}` … エラーで戻ってきても、**入力した文字を消さない**
+
+> ユーザーが頑張って書いた文字を**消さないこと**は、地味ですが**実務でめちゃくちゃ大事**です。
+
+`role="alert"` は、目で見えない人にも「**今エラーが出ました**」と伝わるしるしです。
+
+</Step>
+
+<Step title="Step 5：named action で削除する">
+
+`actions` には**いくつでも名札を付けられる**ので、削除用も同じファイルに足します。
+
+```ts
+delete: async ({ request }) => {
+	const data = await request.formData();
+	const id = Number(data.get('id'));
+	deleteTodo(id);
+	return { ok: true };
+}
+```
+
+```svelte
+<form method="POST" action="?/delete">
+	<input type="hidden" name="id" value={todo.id} />
+	<button type="submit" aria-label="削除">×</button>
+</form>
+```
+
+### これは何をしているか
+
+- `actions.delete` … 「**delete という名札の受付係**」
+- `<form action="?/delete">` … 「**delete に送る**」
+- `<input type="hidden" name="id" value={todo.id} />` … **見えない名札**
+- `Number(data.get('id'))` … 文字で送られてくるので**数字に戻す**
+- `deleteTodo(id)` … 保存場所から消す
+
+> `type="hidden"` は「**ユーザーには見えないけど、サーバーへ一緒に届く名札**」です。
+> 「どの Todo を消すか」を伝える定番のやり方になります。
+
+これで、**追加用フォーム**と**各行の削除フォーム**が、**同じページに同居**できるようになりました。
+
+</Step>
+
+<Step title="Step 6：+page.svelte で画面を作る">
+
+ここまでのピースを `+page.svelte` で組み立てます。
+
+```svelte
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	let { data, form } = $props();
+</script>
+
+{#if form?.error}
+	<p class="error">{form.error}</p>
+{/if}
+
+<form method="POST" action="?/create" use:enhance>
+	<input type="text" name="description" value={form?.description ?? ''} />
+	<button>追加</button>
+</form>
+
+{#if data.todos.length === 0}
+	<p>やることはまだありません 🎉</p>
+{:else}
+	<ul>
+		{#each data.todos as todo (todo.id)}
+			<li>
+				<span>{todo.description}</span>
+				<form method="POST" action="?/delete" use:enhance>
+					<input type="hidden" name="id" value={todo.id} />
+					<button>×</button>
+				</form>
+			</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `let { data, form } = $props()` … `load` の戻り（`data`）と `actions` の戻り（`form`）を受けとる
+- `form?.error` の表示 … バリデーションエラー時
+- 追加フォーム / 一覧 / 削除フォーム … これまで作ってきたパーツの組み立て
+- `[#if](/docs/svelte/if)` `[#each](/docs/svelte/each)` … 表示制御は今までと同じ
+
+これで「**サーバー保存 + 画面表示 + バリデーション**」が一通りそろいました。
+
+</Step>
+
+<Step title="Step 7：use:enhance でなめらかにする">
+
+最後の仕上げが `use:enhance` です。
+[form actions の章](/docs/sveltekit/form-actions) で出てきた**「あとから貼るスムーズ送信用のシール」**ですね。
+
+```svelte
+<script lang="ts">
+	import { enhance } from '$app/forms';
+</script>
+
+<form method="POST" action="?/create" use:enhance>
+	...
+</form>
+```
+
+### これは何をしているか
+
+- `use:enhance` を貼ると、フォーム送信時に**ページ全体をリロードせず**に通信する
+- 通信の結果は自動で `form` と `data` に反映される
+- **JavaScript なしでも動く**（シールがないだけ）
+- **JavaScript ありなら、なめらかに動く**
+
+> ポイント：**先にシールなしで動くフォームを作って、最後に `use:enhance` を貼る**。
+> こうすると、JavaScript が動かない環境（電波の悪いスマホ・古い端末など）でも**最低限ちゃんと動く**サイトになります。これを **progressive enhancement** と呼びます。
+
+</Step>
+
+</Steps>
+
+## 完成コード（3ファイル）
+
+ここまでで作ったコードの全体像です。**完成プレビューのタブ**でも同じ内容が読めます（コピーボタンも使えます）。
+
+### `src/lib/server/todos.ts`
+
+```ts
+export type Todo = { id: number; description: string };
+
+let todos: Todo[] = [];
+let nextId = 1;
+
+export function getTodos(): Todo[] {
+	return todos;
+}
+
+export function createTodo(description: string): Todo {
+	const todo: Todo = { id: nextId++, description };
+	todos.push(todo);
+	return todo;
+}
+
+export function deleteTodo(id: number): void {
+	todos = todos.filter((t) => t.id !== id);
+}
+```
+
+### `src/routes/todos/+page.server.ts`
+
+```ts
+import { fail } from '@sveltejs/kit';
+import { createTodo, deleteTodo, getTodos } from '$lib/server/todos';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return { todos: getTodos() };
+};
+
+export const actions: Actions = {
+	create: async ({ request }) => {
+		const data = await request.formData();
+		const description = String(data.get('description') ?? '').trim();
+
+		if (description === '') {
+			return fail(422, { error: 'やることを入力してください', description });
+		}
+
+		createTodo(description);
+		return { ok: true };
+	},
+
+	delete: async ({ request }) => {
+		const data = await request.formData();
+		const id = Number(data.get('id'));
+		deleteTodo(id);
+		return { ok: true };
+	}
+};
+```
+
+### `src/routes/todos/+page.svelte`
+
+完成プレビューのタブから読んでください（HTML が長いので重複を省きます）。
+要点は **3つの `<form>` と `use:enhance`、`form?.error` の表示**だけです。
+
+## 実務では何につながる？
+
+サーバー保存ができると、世界が一気に広がります。
+
+- **お問い合わせフォーム** … `actions` で受けて、メールやチケットに変換
+- **お知らせ投稿** … 管理者が書いて、訪問者全員が読む
+- **管理画面の作成** … 一覧／追加／編集／削除の CRUD はだいたいこの形
+- **会員ページの申請フォーム** … `+layout.server.ts` でログイン判定、ページ別の `actions` で処理
+- **DB 保存** … `$lib/server/todos.ts` の中身を Postgres / MySQL / SQLite に置きかえる
+- **バリデーション** … `fail(...)` を使って、ユーザーにやさしくエラーを返す
+- **権限チェック** … `actions` の中で「ログインしてる？管理者？」を確認してから処理する
+
+## localStorage 版と server 版の使い分け
+
+| こんなとき | 向いているのは |
+| --- | --- |
+| 個人の一時メモ・下書き | [localStorage 版](/docs/examples/todo-localstorage) |
+| ダークモード設定の記憶 | localStorage |
+| 検索条件の保存 | localStorage |
+| **複数端末で同期したい** | **サーバー版** |
+| **管理画面で他人の Todo も見たい** | **サーバー版** |
+| **DB に蓄積して集計したい** | **サーバー版** |
+| **ログインや権限が絡む** | **サーバー版** |
+
+> 個人ツールを作るうちは localStorage で十分ですが、**「他の人と分け合いたい」**と思った瞬間、サーバー版の出番です。
+> 実務アプリの基本は**サーバー版**になります。
+
+## 今日のまとめ
+
+- サーバー保存は **`+page.server.ts` の `load` と `actions`** が主役
+- `$lib/server/` 配下は**ブラウザに渡らない**ので、保存処理や DB 接続を置く
+- **`fail(422, {...})`** でユーザーにやさしくエラーを返す
+- **named actions**（`?/create` `?/delete`）で、同じページに複数のフォーム
+- **`type="hidden"`** で「どの Todo を消すか」を一緒に送る
+- **`use:enhance`** で**JavaScript なしでも動く**まま、**ありならなめらかに**
+
+## 今はここだけでOK
+
+「**フォームを送ったらサーバーに保存したい**」と思ったら、
+
+1. 保存場所を `$lib/server/...ts` に作る
+2. `+page.server.ts` に `load`（読み出し）と `actions`（書きこみ）を書く
+3. `+page.svelte` で `<form method="POST" action="?/名前">` + `use:enhance`
+
+この3点セットで、ほとんどの「フォームから保存」が書けます。
+
+## 次に作る小さな練習
+
+- 上の3ファイルをそのまま `src/routes/todos/` に置いて、`bun run dev` で動かしてみる
+- `<input>` に何も書かずに「追加」してみて、`fail` のエラーが出ることを確認する
+- 「**完了済みフラグ**」を Todo に足して、チェックで切り替える `actions.toggle` を作ってみる
+- 保存場所を **SQLite**（[better-sqlite3] や [drizzle] など）に置きかえてみる
+- ログインを足して、`actions` の中で「**自分の Todo だけ消せる**」ようにしてみる

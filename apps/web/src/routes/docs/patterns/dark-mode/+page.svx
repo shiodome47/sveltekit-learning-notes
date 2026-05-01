@@ -1,0 +1,277 @@
+---
+title: ダークモードを作ろう
+name: ダークモード
+description: class:dark + $effect + localStorage の合わせ技で、リロードしても保たれるダークモードを作る実例。今までの章のすべてが小さな1部品にまとまります。
+category: 実務パターン集
+order: 20
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import DarkModeDemo from './_DarkModeDemo.svelte';
+	import demoSource from './_DarkModeDemo.svelte?raw';
+</script>
+
+## ひとことで言うと
+
+**ダークモード**は、ひとことで言うと
+
+> **「画面ぜんぶの服を、明るい服から暗い服に着替える仕組み」**
+
+です。
+今までに出てきた **[$state](/docs/svelte/state) + [class:xxx](/docs/svelte/class-style) + [$effect](/docs/svelte/effect) + localStorage**——これだけで、**1部品でちゃんと動く**ダークモードが作れます。
+
+## たとえ話：朝と夜の服
+
+朝は明るい服を着て、夜は暗い服に着替えますよね。
+ダークモードは、これをそのまま画面でやっています。
+
+| たとえ | コード |
+| --- | --- |
+| 服の種類 | `class` |
+| **夜用の服** | `class="dark"` |
+| 「いま夜服を着てる？」 | `theme === 'dark'` |
+| 着替えるボタン | `<button onclick={toggle}>` |
+| 明日も同じ服を着るためのメモ帳 | `localStorage` |
+
+ボタンを押すと、**画面全体が**夜用の服に着替えて、**次に開いたときも同じ服**で迎えてくれます。
+
+## このページで作るもの
+
+- **Light ↔ Dark** を切り替えるボタン
+- 現在のテーマを [`$state`](/docs/svelte/state) で持つ
+- [`class:dark`](/docs/svelte/class-style) で見た目を切り替える
+- [`$effect`](/docs/svelte/effect) で `localStorage` に保存する
+- 次に開いたときも**同じテーマ**にする
+
+## これまでの章とのつながり
+
+今回のページは、**今までに作ってきた道具のかさね合わせ**で完結します。
+
+- [`$state`](/docs/svelte/state)：いまのテーマを入れる箱
+- [`$effect`](/docs/svelte/effect)：テーマが変わったら保存する見張り係
+- [class / style](/docs/svelte/class-style)：`class:dark` で見た目を切り替える
+- [Todo localStorage 版](/docs/examples/todo-localstorage)：`typeof window` ガードと `loadInitial` のパターン
+- [4状態UI](/docs/patterns/loading-error)：保存があったら最初からそれを使う、なければデフォルト
+
+## 完成プレビュー
+
+下のプレビューでボタンを押すと、その場で色が切り替わります。
+**ページをリロード**しても、選んだテーマが保たれます。
+
+<ComponentPreview
+	sources={[
+		{ name: '_DarkModeDemo.svelte', code: demoSource, language: 'svelte' }
+	]}
+>
+	<DarkModeDemo />
+</ComponentPreview>
+
+> このプレビューの色は、**プレビュー枠のなか**だけで切り替わります。
+> ページ全体（このサイト）のテーマは**別の仕組み**で動いていて、影響しません。
+> 保存先のキーも別（`svelte-notes-darkmode-demo-v1`）です。
+
+ここからは、このコードを **6ステップ**に分けて読み解いていきます。
+
+<Steps>
+
+<Step title="Step 1：theme を $state で持つ">
+
+まず「**いまの服**」を入れる箱を [`$state`](/docs/svelte/state) で作ります。
+
+```ts
+type Theme = 'light' | 'dark';
+
+let theme = $state<Theme>('light');
+```
+
+### これは何をしているか
+
+- `type Theme = 'light' | 'dark'` … **「light か dark のどちらか」**という[名札（型）](/docs/typescript/types)
+- `$state<Theme>('light')` … **明るい服**から始める箱
+- `theme` を読めば、**いつでも「いま何の服か」**がわかる
+
+「**ライトとダークしか入らない**」と型で約束してあるので、`theme = 'blue'` のような**書き間違いを TypeScript が止めてくれる**のがうれしいところです。
+
+</Step>
+
+<Step title="Step 2：ボタンで切り替える">
+
+ライトとダークを**入れかえる関数**を1つ作るだけです。
+
+```svelte
+<script lang="ts">
+	function toggle() {
+		theme = theme === 'light' ? 'dark' : 'light';
+	}
+</script>
+
+<button type="button" onclick={toggle}>
+	{theme === 'dark' ? 'ライトに切り替え' : 'ダークに切り替え'}
+</button>
+```
+
+### これは何をしているか
+
+- `theme === 'light' ? 'dark' : 'light'` … 「light なら dark に、dark なら light に」
+- ボタンの**ラベルも反対側**を出して、ユーザーに**次に何が起きるか**を伝える
+- 押すと `theme` が変わり、**画面の見た目も自動で変わる**（次のステップ）
+
+> 「**ボタンの文字はいつも『これから起きること』にする**」のは、UI のちょっとしたコツです。
+
+</Step>
+
+<Step title="Step 3：class で見た目を変える">
+
+[class:xxx](/docs/svelte/class-style) で、**`theme` が `dark` のときだけ** `class="dark"` を当てます。
+
+```svelte
+<section class="demo" class:dark={theme === 'dark'}>
+	...
+</section>
+
+<style>
+	.demo {
+		background: #fafafa;
+		color: #222;
+		border: 1px solid #d4d4d4;
+		transition: background-color 220ms, color 220ms;
+	}
+	.demo.dark {
+		background: #1c1c1c;
+		color: #f5f5f5;
+		border-color: #3a3a3a;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `class:dark={theme === 'dark'}` … 「**`theme` が `dark` のときだけ** `class="dark"` を付ける」
+- `.demo` のスタイル … ふだん（**ライト**）の見た目
+- `.demo.dark` のスタイル … `dark` クラスが付いたとき（**ダーク**）の見た目
+- `transition` … 切り替わるときに**スーッとなめらかに**する
+
+> ポイント：**`<html>` や `<body>` には触っていない**こと。
+> `.demo` の中だけで色が変わる**スコープ完結**の作りなので、サイト全体には影響しません。
+
+</Step>
+
+<Step title="Step 4：localStorage に保存する">
+
+[`$effect`](/docs/svelte/effect) を**見張り係**として使い、**`theme` が変わるたびに `localStorage` へ保存**します。
+
+```ts
+$effect(() => {
+	if (typeof window === 'undefined') return;
+	localStorage.setItem('svelte-notes-darkmode-demo-v1', theme);
+});
+```
+
+### これは何をしているか
+
+- `$effect(() => { ... })` … **`theme` が変わるたびに**自動で動く見張り係
+- `localStorage.setItem(キー, 値)` … メモ帳に**書きこむ**
+- キーは**自分のサイト用に名前をつける**（重複しない名前にするのがコツ）
+- 保存される値は `'light'` または `'dark'`
+
+> ポイント：「**保存タイミングを自分で考えない**」こと。
+> ボタンを押した瞬間でも、外から `theme` を変えたときでも、**変わったらいつでも保存**してくれます。
+> これが [$effect](/docs/svelte/effect) の気持ちよさです。
+
+</Step>
+
+<Step title="Step 5：最初に localStorage から読む">
+
+ページを開いたとき、**前回保存したテーマを読みこむ**関数を作ります。
+
+```ts
+function loadInitial(): Theme {
+	if (typeof window === 'undefined') return 'light';
+	const saved = localStorage.getItem('svelte-notes-darkmode-demo-v1');
+	return saved === 'dark' ? 'dark' : 'light';
+}
+
+let theme = $state<Theme>(loadInitial());
+```
+
+### これは何をしているか
+
+- `loadInitial()` … 「**最初の値を決める係**」
+- `typeof window === 'undefined'` … 「いま `window` がない＝**サーバーにいる**」 → そのときは `'light'`（くわしくは Step 6）
+- `localStorage.getItem(...)` … メモ帳から**読みだす**（無ければ `null`）
+- `saved === 'dark' ? 'dark' : 'light'` … **保存があれば**それを使う、**なければ light**
+- `$state<Theme>(loadInitial())` … その値を**最初の中身**にする
+
+> ここでもポイントは「**typeof window のおまもり**」を必ず付けること。
+> これが無いと、SvelteKit のサーバー側で動いたときに `localStorage is not defined` で**画面が落ちます**。
+
+[Todo localStorage 版](/docs/examples/todo-localstorage) で覚えた **「最初の値は `loadInitial()`、変化は `$effect` で保存」** の3点セットがそのまま使えます。
+
+</Step>
+
+<Step title="Step 6：実務で気をつけること">
+
+小さなデモから、**サイト全体のダークモード**へ広げるときに気をつけることをまとめます。
+
+| 気をつけること | 内容 |
+| --- | --- |
+| **どこに class を付けるか** | サイト全体に効かせるなら、`<html>` か `<body>` に `class="dark"` を付けるのが定番（`document.documentElement.classList.toggle('dark', isDark)`） |
+| **SSR への対策** | サーバー側には `window` も `localStorage` も無い。`typeof window` または SvelteKit の `browser` フラグで分岐 |
+| **初回チラつき** | サーバーが `light` HTML を返す → ブラウザが `dark` に切り替える、で**一瞬白い画面**が見えることがある。本格運用では **cookie** や **`+layout.server.ts`** で先に決めると静かになる |
+| **OSの好みに合わせる** | `window.matchMedia('(prefers-color-scheme: dark)')` で、OS の設定を読める |
+| **ユーザーの上書きを優先** | 「OSの好み」より「**自分で押した結果**」を優先するのが基本（保存があれば常にそちらを使う） |
+| **キー名は重ならないように** | `localStorage` は同じドメインで共有なので、自分の機能には**ユニークな名前**を付ける（例：`my-app-theme-v1`） |
+
+> 今回のデモは、**まず小さく完成させる**ことを優先しています。
+> 「`<html>` の class」「初回チラつきの対策」は、**この型に少しずつ足していく**のがおすすめです。
+
+このサイト自身も、右上のテーマトグルで `<html>` に `dark` を付ける**サイト全体版**を別ファイル（`apps/web/src/lib/stores/theme.svelte.ts`）で実装しています。**今回のデモはそれと完全に分離**されているので、安心していじってください。
+
+</Step>
+
+</Steps>
+
+## 実務では何に使う？
+
+ダークモードと同じ型は、ユーザーの**「ちょっとした好み」を覚える**仕組み全般に使えます。
+
+- **ダークモード切り替え** … 今回のメイン
+- **表示テーマ切り替え** … カラーアクセント・配色プリセット
+- **文字サイズ設定** … `class:large-text` / `class:xl-text` など
+- **サイドバー開閉状態の保存** … 開いていたか、閉じていたか
+- **言語の切り替え** … `'ja'` / `'en'` を保存
+- **検索条件の記憶** … 前回の絞りこみ条件を保存
+- **「もう案内を見ない」フラグ** … 一度閉じたバナーを再表示しない
+- **ユーザー設定全般** … 通知のオン/オフ、密度の高い表示か など
+
+> 「**サーバーに送るほどではないけど、毎回設定したくない**」値は、**全部このパターン**です。
+
+## 今日のまとめ
+
+- ダークモードは「**`class` を付け替えるだけ**」で作れる
+- 状態は [`$state`](/docs/svelte/state) で持つ
+- 見た目の切り替えは [`class:dark`](/docs/svelte/class-style)
+- 保存は [`$effect`](/docs/svelte/effect) + `localStorage`（**`typeof window` ガード必須**）
+- 初期値は `loadInitial()` で localStorage から読む
+- 「**サイト全体に効かせる**」「**チラつかせない**」は次のステップで足していく
+
+## 今はここだけでOK
+
+「ユーザーの好みを**ちょっと覚えたい**」と思ったら、
+
+1. `loadInitial()` を作って、`$state` の初期値に渡す
+2. `$effect` の中で `localStorage.setItem(...)` する
+3. 両方に **`typeof window` ガード**を入れる
+4. `class:xxx` で見た目を切り替える
+
+これで「ダークモード／文字サイズ／開閉状態／その他いろいろ」が**ぜんぶ作れます**。
+
+## 次に作る小さな練習
+
+- 上のデモをそのままコピペして、**自分のページの中**で使ってみる
+- ボタンに**アイコン**（☀️ / 🌙）を足して、文字なしでも分かるようにする
+- 切り替え状態を [Todo アプリ](/docs/examples/todo) のページに組みこんで、**完了済みも薄くなる**ようにテーマと連動させる
+- 文字サイズ切り替え（`'sm' | 'md' | 'lg'`）にこの型を使ってみる
+- OS の好みに合わせるバージョンに発展させる：保存が無いときだけ `window.matchMedia('(prefers-color-scheme: dark)').matches` を見る
+- サイト全体版に進化：`document.documentElement.classList.toggle('dark', isDark)` を `$effect` の中で呼んで、`<html>` に class を付ける（サイトのデザインがダーク対応していれば、これで丸ごと変わる）

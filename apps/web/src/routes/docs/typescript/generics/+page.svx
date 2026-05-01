@@ -1,0 +1,252 @@
+---
+title: Generics は「型をあとから入れる箱」
+name: Generics
+description: api-response 章の Promise や utility-types 章の Pick / Omit / Partial で何度か出てきた <T> の意味を、「あとから型を入れる箱」のたとえで一気に回収します。SvelteKit実務でよく使う形に絞って覚えます。
+category: TypeScript 実践基本
+order: 70
+---
+
+## ひとことで言うと
+
+**Generics**（ジェネリクス）は、ひとことで言うと
+
+> **「使うときに型を入れられる箱」**
+
+です。
+`<T>` という見慣れない記号は、**「あとで決める型の名前」** のことです。
+
+## たとえ話：あとから中身の種類を決められる箱
+
+普通の箱には**「りんご専用箱」「本専用箱」**があります。
+でも Generics は、**「あとから中身の種類を決められる箱」**です。
+
+| たとえ | コード |
+| --- | --- |
+| **箱**（種類は未定） | `Box<T>` |
+| **文字専用箱** | `Box<string>` |
+| **数字専用箱** | `Box<number>` |
+| **Todo専用箱** | `Box<Todo>` |
+
+`<T>` の `T` のところに、使うときに「**何の箱か**」を入れる仕組みです。
+
+## まず T は何？
+
+`T` は**特別な魔法の文字ではありません**。
+ただの「**あとで決める型の名前**」です。
+
+```ts
+type Box<T> = {
+	value: T;
+};
+
+const nameBox: Box<string> = {
+	value: 'Taro'
+};
+
+const countBox: Box<number> = {
+	value: 3
+};
+```
+
+### これは何をしているか
+
+- `Box<T>` … 「**T という名前の型を入れる箱**」を定義
+- `value: T` … その箱の中身は **`T` 型**
+- `Box<string>` … 「文字の箱」として使う
+- `Box<number>` … 「数字の箱」として使う
+- 箱の**形は同じ**、**中身の型だけ変わる**
+
+> `T` の代わりに `Type` でも `Item` でも書けます。
+> でも**慣習として `T` から始めるのが定番**（次が `U`、`V`、`K`、`V` など）。
+> 最初は「`T` ＝ `Type` の頭文字」と覚えればOK。
+
+## 関数で使う Generics
+
+同じ関数を、**いろんな型**で使い回したいときに、Generics の本領発揮です。
+
+```ts
+function first<T>(items: T[]): T | undefined {
+	return items[0];
+}
+
+const firstName = first(['Taro', 'Hanako']); // string | undefined
+const firstNumber = first([1, 2, 3]);        // number | undefined
+const firstTodo = first(todos);              // Todo | undefined
+```
+
+### これは何をしているか
+
+- `first<T>(items: T[]): T | undefined` … 「**`T` の配列**を受け取って、**`T` または `undefined`** を返す関数」
+- `T[]` は **`T` の配列**
+- 戻り値が `T | undefined` なのは、**配列が空のとき** `items[0]` が **`undefined`** になるから（→ [optional](/docs/typescript/optional)）
+- 呼び出し側は `T` を**書かなくてOK**——TypeScript が**自動で推論**してくれる
+
+> ポイント：`first(['Taro', 'Hanako'])` と書くだけで、TypeScript は「**この `T` は `string` だな**」と勝手に判断します。これを**型推論**といいます。
+
+## API レスポンスで使う Generics
+
+[APIレスポンス](/docs/typescript/api-response) 章で見た `SearchResponse` のような型を、**もっと汎用的に**したいとき。
+
+```ts
+type ApiResponse<T> = {
+	data: T;
+	error?: string;
+};
+
+type Notice = {
+	slug: string;
+	title: string;
+};
+
+const response: ApiResponse<Notice[]> = {
+	data: [{ slug: 'jizobon', title: '地蔵盆のお知らせ' }]
+};
+```
+
+### これは何をしているか
+
+- `ApiResponse<T>` … **API の返事の共通の形**
+- `data: T` … 中身は**あとで決める型**
+- `error?: string` … エラーがあれば文字（→ [optional](/docs/typescript/optional)）
+- `ApiResponse<Notice[]>` … 「**お知らせ一覧**を返す API の返事」
+- `ApiResponse<User>` … 「ユーザー情報を返す API の返事」（同じ形で使い回せる）
+
+> 「**API ぜんぶの返事に同じ枠**」を貼っておけば、**画面側の処理も統一**できます。
+
+## `fetchJson<T>` の実務パターン
+
+SvelteKit 実務でいちばん使う Generics の形がこれ。
+
+```ts
+async function fetchJson<T>(url: string): Promise<T> {
+	const res = await fetch(url);
+
+	if (!res.ok) {
+		throw new Error('データ取得に失敗しました');
+	}
+
+	return (await res.json()) as T;
+}
+
+type SearchResponse = {
+	results: Notice[];
+};
+
+const data = await fetchJson<SearchResponse>('/api/notices/search?q=防災');
+```
+
+### これは何をしているか
+
+- `fetchJson<T>` … **「返ってくる JSON の型を、あとから指定できる関数」**
+- `Promise<T>` … **`T` を返す約束**（[APIレスポンス](/docs/typescript/api-response) で予告した形）
+- `as T` … 「`json()` の結果を `T` 型として扱う」
+- 呼び出し側で `<SearchResponse>` を入れると、**戻り値が `SearchResponse` として扱える**
+- ピリオド補完が効く：`data.results` がエディタで提案される
+
+> **同じ関数で、お知らせも商品も天気も**取ってこれます。**1つ書けば全部使える**のが Generics の威力。
+
+> 注意：`as T` は **「中身を見ずに型を決めてしまう」** ので、**実は形が違ってもエラーにならない**。本格運用では [APIレスポンス](/docs/typescript/api-response) 章で触れた **zod / valibot** などで実行時にも検証するのが安全です。
+
+## Utility Types も実は Generics
+
+[Utility Types](/docs/typescript/utility-types) で出てきた `Pick` / `Omit` / `Partial` も、**実は Generics** です。
+
+```ts
+type Notice = {
+	slug: string;
+	title: string;
+	body: string;
+};
+
+type NoticeSummary = Omit<Notice, 'body'>;
+type NoticeDraft = Partial<Notice>;
+```
+
+### これは何をしているか
+
+- `Omit<Notice, 'body'>` … **`Notice` という型を入れて、`body` を外した型を作る**
+- `Partial<Notice>` … `Notice` を入れて、**全部 `?` 付き（任意）** にする
+- どちらも **`<...>` の中に「材料の型」を入れて、新しい型を作る**
+
+> `<T>` を見たら、心の中で**「ここに型を入れて、別の型を作るやつ」**と読めば OK。
+> Generics は**新しい概念**ではなく、すでに**毎日見てきた `<...>` の正体**だったわけです。
+
+## Svelte の props と Generics
+
+普段の Svelte コンポーネントの props は、ふつうの `type Props = { ... }` で**十分**です（→ [type / interface](/docs/typescript/type-vs-interface)）。
+
+Generics は、
+
+- **汎用的な部品**（どんな型でも入る `<List items={...}>`）
+- **共通のヘルパー関数**（`fetchJson<T>` など）
+- **API レスポンス用の枠**（`ApiResponse<T>`）
+
+——のように「**1つの形をいろんな型で使い回したい**」ときの**最後の手札**として覚えておけば OK。
+
+> Svelte 5 では `<List<Notice> items={notices} />` のような **Generic コンポーネント**も書けますが、最初は気にしなくて大丈夫。
+> **「props の型に Generics を使う」場面はほぼ無い**くらいに思っておいて、必要になってから調べれば十分です。
+
+## 使いすぎ注意
+
+`<T>` は便利ですが、**使いすぎると読みにくくなります**。
+
+| 状況 | おすすめ |
+| --- | --- |
+| 1つの型でしか使わない | **ふつうの `type` でOK** |
+| 同じ形を**いろんな型で使い回したい** | **Generics の出番** |
+| 関数の引数によって戻り値の型が変わる | Generics の出番 |
+| 読みづらくなってきた | **無理せずベタ書き型に戻す** |
+
+> 「**何でもかんでも `<T>`**」にしないこと。
+> **まず `type Foo = { ... }` で書く**。**繰り返し**が出てきたら Generics 化する流れがおすすめです。
+
+## 実務では何に使う？
+
+SvelteKit 実務で `<T>` を使う場面は、だいたい次のどれか：
+
+- **API レスポンス共通型** … `ApiResponse<T>`
+- **fetch ヘルパー** … `fetchJson<T>(url)`
+- **配列ヘルパー** … `first<T>(items)`、`groupBy<T>(items, key)`
+- **フォーム結果の型** … `FormResult<T>`（成功時の data 型を変える）
+- **`Result<T>`** … `{ ok: true; data: T } | { ok: false; error: string }` のような共通結果型
+- **Utility Types** … `Pick`・`Omit`・`Partial`（毎日のように使う）
+- **共通ヘルパー関数** … `safe<T>(fn)`、`debounce<T>(fn)` など
+
+## 既存記事との接続
+
+`<T>` の出てきた場面を整理：
+
+| 章 | コード | 説明 |
+| --- | --- | --- |
+| [Utility Types](/docs/typescript/utility-types) | `Omit<Notice, 'body'>` | Notice 型を入れて body を外した型 |
+| [Utility Types](/docs/typescript/utility-types) | `Partial<Notice>` | Notice 型を入れて全部任意にした型 |
+| [APIレスポンス](/docs/typescript/api-response) | `Promise<SearchResponse>` | SearchResponse を最終的に返す約束 |
+| [APIレスポンス](/docs/typescript/api-response) | `as SearchResponse` | 受け取った JSON を SearchResponse として扱う |
+| この章 | `Box<T>`・`first<T>`・`fetchJson<T>` | 自分で書く Generics の基本形 |
+
+「**`<...>` を見たら、ここに型を入れる箱だな**」と読めるようになれば、卒業 🎓
+
+## 今日のまとめ
+
+- Generics は「**型をあとから入れる箱**」
+- `<T>` の `T` は「**あとで決める型の名前**」（魔法の文字ではない）
+- 関数 `<T>(items: T[]): T` で、**いろんな型で使い回せる**
+- `Promise<T>` / `ApiResponse<T>` / `fetchJson<T>` が**実務の3大パターン**
+- `Pick<T, K>` / `Omit<T, K>` / `Partial<T>` も**実は Generics**
+- まずはふつうの `type` で書く。**繰り返しが出てきたら**Generics 化
+
+## 今はここだけでOK
+
+> **「`<T>` は『ここにあとで型を入れてね』のしるし」**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- `Box<T>` を**白紙で書いてみる**（`type Box<T> = { value: T }`）
+- `first<T>()` を**白紙で書いてみる**（配列の最初を返す）
+- `ApiResponse<T>` の `T` に [Notice](/docs/examples/notice-board)`[]` を入れて、お知らせ一覧の返事の型を作ってみる
+- `fetchJson<T>(url)` の形を**白紙で書く**——`Promise<T>` の戻りまで含めて
+- [検索リスト](/docs/examples/search-list) を**サーバー検索版**に発展させるとき、`fetchJson<SearchResponse>(...)` を呼ぶ形を頭の中で書く
+- [+server.ts](/docs/sveltekit/api-routes) 側の API も `ApiResponse<T>` 形で返すようにすると、**型が両側で揃う**ことを想像する
+- `Result<T>` 型（成功 ＋ 失敗の union）を `Result<Notice>` で書いてみる

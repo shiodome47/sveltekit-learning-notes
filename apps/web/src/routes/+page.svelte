@@ -28,17 +28,21 @@
 				{@html brandingConfig.logoRaw}
 			</span>
 
-			<h1 class="text-4xl leading-none font-medium tracking-tight text-foreground md:text-6xl">
-				Motion Core
+			<h1
+				class="text-3xl leading-tight font-medium tracking-tight text-foreground md:text-5xl"
+			>
+				Svelte &amp; TypeScript<br />Learning Notes
 			</h1>
-			<p class="text-lg font-medium text-foreground-muted">Documentation Template</p>
+			<p class="max-w-xl text-base font-medium text-foreground-muted md:text-lg">
+				小学生にもわかるくらい、SvelteとTypeScriptをやさしく学ぶノート
+			</p>
 
 			<div class="inset-shadow rounded-md bg-background-inset p-1.5">
 				<a
 					href="/docs"
 					class="card inline-flex items-center justify-center rounded-sm bg-background px-4 py-2.5 text-sm font-medium text-foreground no-underline transition-[background-color] duration-150 ease-out hover:bg-background-muted"
 				>
-					Open Docs
+					学習ノートを読む
 				</a>
 			</div>
 		</div>

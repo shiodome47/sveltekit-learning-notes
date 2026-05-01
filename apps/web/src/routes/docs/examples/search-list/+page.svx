@@ -1,0 +1,308 @@
+---
+title: 検索できる一覧を作ろう
+name: 検索リスト
+description: bind:value と $derived を使って、その場で絞り込める一覧を作る実例。検索画面・FAQ・商品一覧・管理画面など、実務で毎日使うパターンを1ページで覚えます。
+category: 小さなアプリ例
+order: 50
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import SearchListDemo from './_SearchListDemo.svelte';
+	import demoSource from './_SearchListDemo.svelte?raw';
+</script>
+
+## ひとことで言うと
+
+**検索リスト**は、ひとことで言うと
+
+> **「入力した文字に合うものだけを、その場で並べなおす画面」**
+
+です。
+[bind:value](/docs/svelte/bind) で入力欄と変数をつなぎ、[$derived](/docs/svelte/derived) で「合うもの**だけ**」を計算する。
+たったこれだけで、**気持ちよく絞り込める一覧**が作れます。
+
+## たとえ話：たくさんのカードから探す
+
+机にカードが8枚くらい並んでいるとします。
+**「防災」と書かれたカードだけ集めて**、と頼まれたら、目で1枚ずつ拾いますよね。
+
+検索リストはこの作業を**コンピュータがやってくれる**仕組みです。
+
+| たとえ | コード |
+| --- | --- |
+| **探す言葉を書く箱** | `<input bind:value={query}>` |
+| **その言葉に合うカードだけ選ぶ係** | `$derived(notices.filter(...))` |
+| **そろえて並べる人** | `{#each filteredNotices ...}` |
+| **「見つからないよ」と教えてくれる人** | `{#if filteredNotices.length === 0}` |
+
+## このページで作るもの
+
+- **検索欄**（入力欄）
+- お知らせ**一覧**
+- 入力に合わせた**絞り込み**
+- 「**該当なし**」メッセージ
+- 「**X件中 Y件を表示**」の件数表示
+- **選択中**の項目を目立たせる簡易UI
+
+## これまでの章とのつながり
+
+このページは、ほとんどが**復習の組み合わせ**で作れます。
+
+- [`bind:value`](/docs/svelte/bind)：入力欄と `query` をつなぐ
+- [`$derived`](/docs/svelte/derived)：`query` から絞り込み結果を**自動で**作る
+- [`{#each}`](/docs/svelte/each)：結果を1個ずつ並べる
+- [`{#if}`](/docs/svelte/if)：0件メッセージを出す
+- [class / style](/docs/svelte/class-style)：選択中を強調
+- [4状態UI](/docs/patterns/loading-error)：empty 状態の実例
+- [お知らせ一覧](/docs/examples/notice-board)：このページの**素材**として再利用
+
+## 完成プレビュー
+
+下のプレビューで、実際に文字を入れて試してみてください。
+**「防災」「環境」「役員」**などで打ってみると、一覧がその場で絞りこまれます。
+
+<ComponentPreview
+	sources={[
+		{ name: '_SearchListDemo.svelte', code: demoSource, language: 'svelte' }
+	]}
+>
+	<SearchListDemo />
+</ComponentPreview>
+
+ここからは、このコードを **5ステップ**に分けて読み解いていきます。
+
+<Steps>
+
+<Step title="Step 1：検索欄を作る">
+
+検索欄と `query` という変数を、`bind:value` でつなぎます（→ [bind](/docs/svelte/bind)）。
+
+```svelte
+<script lang="ts">
+	let query = $state('');
+</script>
+
+<input
+	type="search"
+	bind:value={query}
+	placeholder="タイトル / カテゴリで検索"
+/>
+```
+
+### これは何をしているか
+
+- `let query = $state('')` … 「**今入力されている検索文字**」を入れる箱
+- `bind:value={query}` … 「**入力欄と `query` をひもでつなぐ**」
+- ユーザーが文字を打つたびに、**`query` も自動で変わる**
+- `type="search"` … スマホで検索キーボードが出やすい（入力欄の横に **× 印**も出るブラウザがある）
+
+> ポイント：これだけで、**`query` を読めば「いま画面で入力されている文字」が手に入る**ようになります。
+
+</Step>
+
+<Step title="Step 2：$derived で絞りこむ">
+
+`query` から「**合うものだけ**」を作るのが、[`$derived`](/docs/svelte/derived) の出番です。
+
+```ts
+const q = $derived(query.trim());
+
+const filteredNotices = $derived(
+	q === ''
+		? notices
+		: notices.filter((n) =>
+				[n.title, n.excerpt, n.category].some((s) => s.includes(q))
+			)
+);
+```
+
+### これは何をしているか
+
+- `query.trim()` … 前後の**空白を消した**文字
+- `q === ''` … 検索が空っぽなら、**ぜんぶ**返す
+- `notices.filter(...)` … 1件ずつ「**含むかどうか**」をチェック
+- `[n.title, n.excerpt, n.category]` … 検索したい**3つのフィールド**
+- `.some((s) => s.includes(q))` … 「**どれか1つでも**含めばOK」
+
+> 大事なのは「**自分で書きかえないこと**」。
+> `query` が変わると、Svelte が**自動で** `filteredNotices` を作りなおしてくれます。
+> これが [`$derived`](/docs/svelte/derived) のすごいところです。
+
+サーバー通信も `setTimeout` も要りません。**配列 + `filter`** の組み合わせだけで、軽い検索なら十分です。
+
+</Step>
+
+<Step title="Step 3：each で結果を並べる">
+
+絞りこんだ結果を、[`{#each}`](/docs/svelte/each) で並べます。
+
+```svelte
+<ul>
+	{#each filteredNotices as notice (notice.slug)}
+		<li>
+			<span>{notice.category}</span>
+			<strong>{notice.title}</strong>
+			<span>{notice.excerpt}</span>
+			<time>{notice.date}</time>
+		</li>
+	{/each}
+</ul>
+```
+
+### これは何をしているか
+
+- `{#each filteredNotices ...}` … **絞りこんだあと**のリストを並べる
+- `(notice.slug)` … 並び替えバグを防ぐ **key**
+- 表示する内容は普通の HTML
+
+> 件数表示も足しておくと、ユーザーに親切です。
+
+```svelte
+<p>{notices.length} 件中 <strong>{filteredNotices.length}</strong> 件を表示</p>
+```
+
+### これは何をしているか
+
+- `notices.length` … 全体の件数（変わらない）
+- `filteredNotices.length` … いま見えている件数（検索で変わる）
+- ユーザーは「**ぜんぶで何件あるか**」「**いま何件見えているか**」が一目でわかる
+
+</Step>
+
+<Step title="Step 4：if で「該当なし」メッセージを出す">
+
+検索結果が0件のときは、**そのことを伝える**のが大事です。
+
+```svelte
+{#if filteredNotices.length === 0}
+	<p>「{q}」に合うお知らせは見つかりません</p>
+{:else}
+	<ul>
+		{#each filteredNotices as notice (notice.slug)}
+			<li>...</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `filteredNotices.length === 0` … **0件かどうか**
+- 0件なら、入力された文字を**そのまま見せる**メッセージを出す
+- そうでなければ、いつもの一覧を出す
+
+> [4状態UI](/docs/patterns/loading-error) でいうところの **`empty` 状態** にあたる場面です。
+> 「ユーザーが**何も書いていない**」ときと「**書いたけど合わない**」ときを、メッセージで**区別する**と親切です（例：「キーワードを変えてもう一度お試しください」など）。
+
+「**真っ白な一覧**」のままにしないこと。これだけで体験の質が変わります。
+
+</Step>
+
+<Step title="Step 5：class:selected で選択中を目立たせる">
+
+クリックされた行をハイライトするのは [class:xxx](/docs/svelte/class-style) の出番です。
+
+```svelte
+<script lang="ts">
+	let selectedSlug = $state<string | null>(null);
+
+	function select(slug: string) {
+		selectedSlug = slug === selectedSlug ? null : slug;
+	}
+</script>
+
+<ul>
+	{#each filteredNotices as notice (notice.slug)}
+		<li class:selected={notice.slug === selectedSlug}>
+			<button type="button" onclick={() => select(notice.slug)}>
+				<strong>{notice.title}</strong>
+			</button>
+		</li>
+	{/each}
+</ul>
+
+<style>
+	li.selected button {
+		outline: 2px solid currentColor;
+		outline-offset: -2px;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `selectedSlug` … いま選ばれている slug（無ければ `null`）
+- `select(slug)` … **同じ行をもう一度押すと解除**する小さな工夫
+- `class:selected={notice.slug === selectedSlug}` … 選ばれた行**だけ**に `selected` クラスを付ける
+- CSS の `outline` で**枠を描いて**目立たせる
+
+> ポイント：選択状態は `selectedSlug`（**`slug` という ID**）で持ちます。
+> 一覧そのもの（`notices`）はいじらないので、**何度でもクリックして大丈夫**です。
+
+</Step>
+
+</Steps>
+
+## 実務では何に使う？
+
+検索リストは、**情報の量が増えるあらゆる画面**に必要です。
+
+- **お知らせ検索** … 自治会・PTA・社内ポータル
+- **FAQ 検索** … 「困ったらここ」を1ページで
+- **商品一覧** … カテゴリ + キーワード
+- **管理画面のユーザー検索** … 名前・メール・部署で絞りこむ
+- **自治会資料の検索** … 議事録・配布物・アーカイブ
+- **タグ / カテゴリ絞り込み** … カテゴリボタン → `$derived` で出し分け
+- **テーブル一覧の絞り込み** … 行が100以上あるテーブル
+- **コマンドパレット風UI** … 「⌘K」で開く検索
+
+> このサイトの上部の検索ボックス（⌘ K）も、**考え方は同じ**です。
+> 「**入力 → 絞りこみ → 並べる**」の3点セット。
+
+## localStorage 版や server 版との違い
+
+このページの主役は **「保存」ではなく「表示の絞り込み」** です。
+[Todo](/docs/examples/todo)・[localStorage 版](/docs/examples/todo-localstorage)・[server 版](/docs/examples/todo-server) と並べると、性格がはっきりします。
+
+| ページ | 主役 | データの居場所 |
+| --- | --- | --- |
+| Todo アプリ | **追加 / 削除** | メモリ |
+| Todo localStorage 版 | **永続化** | ブラウザの localStorage |
+| Todo server 版 | **サーバー保存** | サーバー（DB） |
+| **検索リスト（今回）** | **絞りこみ** | メモリ（クライアント） |
+
+> もし**検索対象が大量**（数千件・数万件）になるなら、**サーバー側で検索する版**に発展できます。
+> その場合は、`bind:value` の `query` を URL クエリ（`?q=...`）に同期させて、`load({ url })` の中で `url.searchParams.get('q')` を読んで DB を引く流れになります。
+>
+> でも**まずはクライアント側 `filter` で十分**な場面のほうが多いです。**速いし、シンプルだし、サーバー無しでも動く**からです。
+
+## 今日のまとめ
+
+- 検索リストは「**入力 → 絞りこみ → 並べる**」の3点セット
+- [`bind:value`](/docs/svelte/bind) で入力と変数をひもでつなぐ
+- [`$derived`](/docs/svelte/derived) で**自動で結果を作る**（自分で書きかえない）
+- [`{#if}`](/docs/svelte/if) で **「該当なし」のとき** を必ずカバーする
+- [`class:selected`](/docs/svelte/class-style) で**選択中を強調**する
+- 件数表示（**X 件中 Y 件**）でユーザーへの安心感を出す
+
+## 今はここだけでOK
+
+「**入力に合うものだけ表示したい**」と思ったら、
+
+1. `query` を [`$state`](/docs/svelte/state) に置く
+2. 入力欄を `bind:value={query}` でつなぐ
+3. `$derived(配列.filter(...))` で結果を作る
+4. `{#each}` で並べる
+5. `{#if 0件}` でメッセージを出す
+
+この5ステップで、**ほとんどの絞り込みUIが書けます**。
+
+## 次に作る小さな練習
+
+- [お知らせ一覧](/docs/examples/notice-board) のページに、上の検索欄を**そのまま追加**してみる
+- 大文字 / 小文字を**気にしない**ように、`title.toLowerCase().includes(q.toLowerCase())` に変えてみる
+- カテゴリだけで絞りこむ**ボタンUI**（「ぜんぶ / 行事 / 防災 / 会議」）を作って、`$derived` でつなぐ
+- URL クエリに `?q=...` を反映する版に進化させる（`page.url.searchParams.get('q')` ＋ [load](/docs/sveltekit/load)）
+- **入力から 0.3 秒待ってから検索**するデバウンスを [$effect](/docs/svelte/effect) で書いてみる
+- 検索結果に**ハイライト**（一致した文字だけ太字）を付けてみる

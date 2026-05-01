@@ -1,0 +1,146 @@
+---
+title: load は「ページ表示前の材料集め」
+name: load：表示前の材料集め
+description: load は「ページが表示される前に、材料を集めてくれる係」。給食の準備係や、料理の材料集めに似ています。
+category: SvelteKit 基本
+order: 20
+---
+
+`load` は、ひとことで言うと
+
+> **「ページが表示される前に、材料を集めてくれる係」**
+
+です。
+
+## たとえ話：給食の準備係
+
+ふつう、給食を食べる前に、係の人が**材料**や**食器**を準備してくれていますよね。
+`load` はちょうどそれと同じです。
+
+ページが表示される前に、
+
+- 「ブログ記事の中身を取ってくる」
+- 「ユーザー名を取ってくる」
+- 「天気の情報を取ってくる」
+
+など、**ページに必要なデータを先に集めてくれる**係です。
+
+## 役割分担
+
+`load` を使うとき、ファイルが2つに分かれます。
+
+| ファイル | 役わり |
+| --- | --- |
+| `+page.server.ts` | **材料集めの係**（サーバー側で動く） |
+| `+page.svelte` | **見た目の係**（画面に表示する） |
+
+## いちばん小さな例：今日のひとこと
+
+`/today` というページに、サーバーで決めた一言を表示します。
+
+```ts
+// src/routes/today/+page.server.ts
+export async function load() {
+	return {
+		message: 'きょうもがんばろう！'
+	};
+}
+```
+
+```svelte
+<!-- src/routes/today/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<h1>{data.message}</h1>
+```
+
+### これは何をしているか
+
+- `+page.server.ts` の `load` … 「`message` という材料を準備して返す」
+- `+page.svelte` の `data` … 「準備された材料を受け取る入れもの」
+- `data.message` … その中の「メッセージ」を取り出して表示
+
+`+page.svelte` のほうは、**もう用意された材料を画面に出すだけ**でOKです。
+
+## ブログ記事を表示する例
+
+「URL の `slug` に合わせて、記事を取ってくる」例を見てみます。
+
+```bash
+src/routes/blog/[slug]/
+├─ +page.server.ts
+└─ +page.svelte
+```
+
+```ts
+// +page.server.ts
+export async function load({ params }) {
+	const article = {
+		title: params.slug + ' のおはなし',
+		body: 'これは ' + params.slug + ' の記事の本文です。'
+	};
+	return { article };
+}
+```
+
+```svelte
+<!-- +page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<h1>{data.article.title}</h1>
+<p>{data.article.body}</p>
+```
+
+### これは何をしているか
+
+- `[slug]` というフォルダ名は「**URL の一部を受け取る箱**」
+- `params.slug` … URL に入っていた文字を取り出す
+- `load` で記事データを作って返す
+- `+page.svelte` は受け取って表示するだけ
+
+`/blog/hello` にアクセスすると、`params.slug` は `'hello'` になります。
+
+## 会員ページの「門番」にも使える（ちょい紹介）
+
+`load` の中で「**ログインしていない人は別ページに送る**」こともできます。
+
+```ts
+// +page.server.ts
+import { redirect } from '@sveltejs/kit';
+
+export async function load({ locals }) {
+	if (!locals.user) {
+		throw redirect(302, '/login');
+	}
+	return { name: locals.user.name };
+}
+```
+
+### これは何をしているか
+
+- ログイン情報がなかったら `/login` に送る
+- ログインしていれば、そのまま `name` を返してページ表示
+
+つまり `load` は、**「準備係」だけでなく「入口の門番」**にもなれます。
+（くわしくは、また別のページで！）
+
+## 今日のまとめ
+
+- `load` は「**ページ表示前の材料集めの係**」
+- `+page.server.ts` で材料を集め、`+page.svelte` で表示する
+- 受け取り口は `let { data } = $props()`
+
+## 今はここだけでOK
+
+「ページに**先に**データを用意したい」と思ったら、
+`+page.server.ts` の `load` で `return { ... }` するだけ。
+
+## 次に作る小さな練習
+
+- `/today/+page.server.ts` で「今日の名言」を返して、画面に表示してみる
+- `/blog/[slug]/+page.svelte` を作って、URL に書いた文字を画面に出してみる
+- `load` の中で `Math.random()` を使って、毎回ちがう数字を表示してみる

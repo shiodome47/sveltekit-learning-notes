@@ -1,0 +1,515 @@
+---
+title: お知らせ一覧と詳細ページを作ろう
+name: お知らせ一覧
+description: SvelteKitの routes / [slug] / load を全部まとめて練習できる総合実例。自治会・ブログ・ニュースなど「一覧→詳細」のパターンをこの1ページで一通り学べます。
+category: 小さなアプリ例
+order: 40
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import NoticeBoardDemo from './_NoticeBoardDemo.svelte';
+
+	const noticesSource = `// src/lib/server/notices.ts
+//
+// サーバー側でだけ使う「お知らせの保存場所」。
+// $lib/server/ 以下に置くと、ブラウザには絶対に渡らない。
+// 今回はベタ書き。実務ではDBやCMSに置きかえる。
+
+export type Notice = {
+	slug: string;
+	title: string;
+	date: string;
+	excerpt: string;
+	body: string;
+};
+
+const notices: Notice[] = [
+	{
+		slug: 'jizobon',
+		title: '地蔵盆のお知らせ',
+		date: '2025-08-23',
+		excerpt: '今年も町内の地蔵盆を開催します。',
+		body: '日時：8月23日（土）午後5時から。場所：町内会館前。'
+	},
+	{
+		slug: 'bousai-training',
+		title: '防災訓練のお知らせ',
+		date: '2025-09-07',
+		excerpt: '町内合同の防災訓練を行います。',
+		body: '日時：9月7日（日）午前9時から。集合場所：第二公園。'
+	},
+	{
+		slug: 'yakuinkai',
+		title: '役員会のお知らせ',
+		date: '2025-10-05',
+		excerpt: '次年度の役員会を開きます。',
+		body: '日時：10月5日（日）午後2時から。場所：町内会館。'
+	}
+];
+
+// 一覧では body を返さない（軽くするため）
+export type NoticeSummary = Omit<Notice, 'body'>;
+
+export function getNoticeSummaries(): NoticeSummary[] {
+	return notices.map(({ body, ...rest }) => rest);
+}
+
+export function getNoticeBySlug(slug: string): Notice | undefined {
+	return notices.find((n) => n.slug === slug);
+}
+`;
+
+	const listServerSource = `// src/routes/notices/+page.server.ts
+//
+// 一覧ページの load。
+// body は要らないので、サマリだけを返す。
+
+import { getNoticeSummaries } from '$lib/server/notices';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return {
+		notices: getNoticeSummaries()
+	};
+};
+`;
+
+	const listPageSource = `<!-- src/routes/notices/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+<\/script>
+
+<h1>お知らせ一覧</h1>
+
+{#if data.notices.length === 0}
+	<p>まだお知らせはありません</p>
+{:else}
+	<ul>
+		{#each data.notices as notice (notice.slug)}
+			<li>
+				<a href="/notices/{notice.slug}">
+					<time>{notice.date}</time>
+					<strong>{notice.title}</strong>
+					<span>{notice.excerpt}</span>
+				</a>
+			</li>
+		{/each}
+	</ul>
+{/if}
+`;
+
+	const detailServerSource = `// src/routes/notices/[slug]/+page.server.ts
+//
+// 詳細ページの load。
+// URL の slug にあう1件を取りだし、見つからなければ 404。
+
+import { error } from '@sveltejs/kit';
+import { getNoticeBySlug } from '$lib/server/notices';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ params }) => {
+	const notice = getNoticeBySlug(params.slug);
+	if (!notice) {
+		throw error(404, 'お知らせが見つかりません');
+	}
+	return { notice };
+};
+`;
+
+	const detailPageSource = `<!-- src/routes/notices/[slug]/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+<\/script>
+
+<a href="/notices">← 一覧に戻る</a>
+
+<article>
+	<h1>{data.notice.title}</h1>
+	<time>{data.notice.date}</time>
+	<p>{data.notice.body}</p>
+</article>
+`;
+</script>
+
+## ひとことで言うと
+
+「**お知らせ一覧**」は、SvelteKit の **routes / `[slug]` / `load`** をぜんぶまとめて練習できる、いちばん**実務的な**例です。
+町内会のお知らせ、ブログ、ニュース、FAQ、社内ポータル——**「一覧して、選んでじっくり読む**」**画面はぜんぶこの形**です。
+
+## このページで作るもの
+
+- お知らせ**一覧ページ**（`/notices`）
+- お知らせ**詳細ページ**（`/notices/[slug]`）
+- URL に **`slug`** を使った動的ルート
+- `load` で**サーバーからデータを読みこむ**
+- ない記事なら **404 ページ**にする
+- 0件のときは「**まだお知らせはありません**」を出す
+
+## たとえ話：掲示板と貼り紙
+
+町内会の**掲示板**を思い浮かべてください。
+
+- **一覧ページ** ＝ **掲示板**（タイトルがずらっと並んでいる）
+- **詳細ページ** ＝ **1枚の貼り紙**を持って帰って、机でじっくり読む画面
+
+掲示板（一覧）と、1枚の貼り紙（詳細）は**別のページ**として作ります。
+URL もそれぞれ違います。これが SvelteKit のルーティングと相性ピッタリです。
+
+## これまでの章とのつながり
+
+- [`{#each}`](/docs/svelte/each)：一覧の中身を1個ずつ並べる
+- [`{#if}`](/docs/svelte/if)：0件メッセージ・404 表示
+- [class / style](/docs/svelte/class-style)：選択中・カテゴリ別・新着の見た目
+- [`[slug]`：動的ルート](/docs/sveltekit/dynamic-routes)：URL の一部を受け取る
+- [`load`：表示前の材料集め](/docs/sveltekit/load)：サーバーからデータを取る
+- [4状態UI](/docs/patterns/loading-error)：empty / data / 404 の出し分け
+- [`+page.svelte`](/docs/sveltekit/page)・[`+layout.svelte`](/docs/sveltekit/layout)：ページの骨組み
+
+「**今までの章ぜんぶ**」が1つの画面にぎゅっと集まる、それがお知らせ一覧です。
+
+## 完成イメージ
+
+**一覧（`/notices`）：**
+
+- 地蔵盆のお知らせ — 2025-08-23
+- 防災訓練のお知らせ — 2025-09-07
+- 役員会のお知らせ — 2025-10-05
+
+**詳細：**
+
+- `/notices/jizobon` — 地蔵盆のお知らせ
+- `/notices/bousai-training` — 防災訓練のお知らせ
+- `/notices/yakuinkai` — 役員会のお知らせ
+
+下のプレビューで、**選んだお知らせがどう詳細化するか**を疑似的に体験できます。
+タブを切り替えると、**実際にこの画面を作る5ファイル**が順に読めます。
+
+<ComponentPreview
+	sources={[
+		{ name: 'src/lib/server/notices.ts', code: noticesSource, language: 'typescript' },
+		{ name: 'src/routes/notices/+page.server.ts', code: listServerSource, language: 'typescript' },
+		{ name: 'src/routes/notices/+page.svelte', code: listPageSource, language: 'svelte' },
+		{ name: 'src/routes/notices/[slug]/+page.server.ts', code: detailServerSource, language: 'typescript' },
+		{ name: 'src/routes/notices/[slug]/+page.svelte', code: detailPageSource, language: 'svelte' }
+	]}
+>
+	<NoticeBoardDemo />
+</ComponentPreview>
+
+> 上のプレビューは**疑似デモ**です（同じ画面で `$state` を切り替えています）。
+> 本物の SvelteKit では、**URL が変わって別のページに移動**します。
+
+## ファイル構成
+
+```bash
+src/
+├─ lib/
+│  └─ server/
+│     └─ notices.ts                    ← お知らせデータ置き場
+└─ routes/
+   └─ notices/
+      ├─ +page.svelte                  ← 一覧画面
+      ├─ +page.server.ts               ← 一覧データを取る load
+      └─ [slug]/
+         ├─ +page.svelte               ← 詳細画面
+         └─ +page.server.ts            ← slug にあう1件を取る load
+```
+
+役割を一言で：
+
+| ファイル | 役割 |
+| --- | --- |
+| `notices/+page.svelte` | **一覧画面** |
+| `notices/+page.server.ts` | **一覧データを取る `load`** |
+| `notices/[slug]/+page.svelte` | **詳細画面** |
+| `notices/[slug]/+page.server.ts` | **`slug` にあう1件を取る `load`** |
+| `src/lib/server/notices.ts` | **お知らせのデータ置き場**（将来は DB に置きかえ） |
+
+> `$lib/server/` 配下は**ブラウザに渡らない**ので、データ取得や DB 接続コードを置きます。
+
+それでは7ステップで組み立てていきます。
+
+<Steps>
+
+<Step title="Step 1：お知らせデータを作る">
+
+まず「**お知らせの中身**」を保存する場所を `src/lib/server/notices.ts` に作ります。
+
+```ts
+export type Notice = {
+	slug: string;
+	title: string;
+	date: string;
+	excerpt: string;
+	body: string;
+};
+
+const notices: Notice[] = [
+	{
+		slug: 'jizobon',
+		title: '地蔵盆のお知らせ',
+		date: '2025-08-23',
+		excerpt: '今年も町内の地蔵盆を開催します。',
+		body: '日時：8月23日（土）午後5時から。場所：町内会館前。'
+	}
+	// 続く…
+];
+
+export type NoticeSummary = Omit<Notice, 'body'>;
+
+export function getNoticeSummaries(): NoticeSummary[] {
+	return notices.map(({ body, ...rest }) => rest);
+}
+
+export function getNoticeBySlug(slug: string): Notice | undefined {
+	return notices.find((n) => n.slug === slug);
+}
+```
+
+### これは何をしているか
+
+- `type Notice = {...}` … お知らせ1件の[名札（型）](/docs/typescript/types)
+- `slug` … URL に使う**短いID**（英数字）
+- `excerpt` … 一覧で見せる**短い紹介文**
+- `body` … 詳細で読む**本文**
+- `getNoticeSummaries()` … **一覧用**（軽い：body を含まない）
+- `getNoticeBySlug(slug)` … **詳細用**（重い：body を含む）
+
+> ポイントは「**一覧と詳細でデータを分ける**」こと。
+> 一覧でも `body` 全部を返すと、お知らせが100件あったら一気に重くなります。
+> **必要な分だけ取る**のが実務感覚です。
+
+</Step>
+
+<Step title="Step 2：一覧ページの load">
+
+一覧ページ `/notices` を表示する前に、サマリ一覧を取ってきます。
+
+```ts
+// src/routes/notices/+page.server.ts
+import { getNoticeSummaries } from '$lib/server/notices';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = () => {
+	return {
+		notices: getNoticeSummaries()
+	};
+};
+```
+
+### これは何をしているか
+
+- [`load`](/docs/sveltekit/load) … 「**ページ表示前の材料集め**」
+- `getNoticeSummaries()` … **サマリだけ**（body なし）を取りだす
+- `return { notices }` … `+page.svelte` 側に「これを使ってね」と渡す
+
+`+page.server.ts` に置いたコードは **サーバーで実行**されます。
+ブラウザに HTML が届いた時点で、**もう一覧入りで見える**——これが SSR のいいところです。
+
+</Step>
+
+<Step title="Step 3：一覧ページを表示する">
+
+`+page.svelte` で、受けとった一覧を [`{#each}`](/docs/svelte/each) で並べます。
+
+```svelte
+<!-- src/routes/notices/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<h1>お知らせ一覧</h1>
+
+{#if data.notices.length === 0}
+	<p>まだお知らせはありません</p>
+{:else}
+	<ul>
+		{#each data.notices as notice (notice.slug)}
+			<li>
+				<a href="/notices/{notice.slug}">
+					<time>{notice.date}</time>
+					<strong>{notice.title}</strong>
+					<span>{notice.excerpt}</span>
+				</a>
+			</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `let { data } = $props()` … `load` の戻りを受けとる
+- `{#if data.notices.length === 0}` … **0件のとき**の案内文を出す
+- `{#each data.notices as notice (notice.slug)}` … 1個ずつ並べる
+- `(notice.slug)` … 並び替えバグを防ぐ **key**
+- `<a href="/notices/{notice.slug}">` … クリックすると**詳細ページに移動**する
+
+> リンク先が `/notices/{slug}` になっていることに注目。次のステップで、ここを受けとる側を作ります。
+
+</Step>
+
+<Step title="Step 4：[slug] で詳細ページを作る">
+
+詳細ページのルートは **`[slug]`** という特別なフォルダ名で作ります。
+
+```bash
+src/routes/notices/[slug]/
+├─ +page.svelte
+└─ +page.server.ts
+```
+
+`[slug]` は「**ここに何が入っても OK な箱**」（→ [動的ルート](/docs/sveltekit/dynamic-routes)）。
+
+- `/notices/jizobon` → `params.slug` は `'jizobon'`
+- `/notices/bousai-training` → `params.slug` は `'bousai-training'`
+- `/notices/yakuinkai` → `params.slug` は `'yakuinkai'`
+
+ファイル**1つだけ**で、お知らせの数だけ違うページが作れます。
+
+</Step>
+
+<Step title="Step 5：詳細ページの load（404 対応つき）">
+
+詳細ページの `load` では、**`slug` にあう1件を探して**渡します。
+**見つからなかったら 404** で返すのが実務の作法です。
+
+```ts
+// src/routes/notices/[slug]/+page.server.ts
+import { error } from '@sveltejs/kit';
+import { getNoticeBySlug } from '$lib/server/notices';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ params }) => {
+	const notice = getNoticeBySlug(params.slug);
+	if (!notice) {
+		throw error(404, 'お知らせが見つかりません');
+	}
+	return { notice };
+};
+```
+
+### これは何をしているか
+
+- `({ params })` … URL の `[slug]` 部分を受けとる
+- `getNoticeBySlug(params.slug)` … 保存場所から探す
+- 見つからなければ `throw error(404, '...')` … **専用の 404 ページ**に飛ばす
+- 見つかれば `return { notice }` で詳細データを渡す
+
+> SvelteKit の `error()` は、**例外として投げる**のがクセです。`return` ではなく `throw`。
+> こうすると `+error.svelte` を作っておけば、**ぜんぶの 404 を1か所できれいに**見せられます。
+
+</Step>
+
+<Step title="Step 6：詳細ページを表示する">
+
+詳細画面はとてもシンプルです。`load` がもう1件取ってきてくれているので、**並べて出すだけ**。
+
+```svelte
+<!-- src/routes/notices/[slug]/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<a href="/notices">← 一覧に戻る</a>
+
+<article>
+	<h1>{data.notice.title}</h1>
+	<time>{data.notice.date}</time>
+	<p>{data.notice.body}</p>
+</article>
+```
+
+### これは何をしているか
+
+- `data.notice` … `load` から渡された 1件
+- `{data.notice.body}` … **本文をそのまま表示**
+- `<a href="/notices">` … 一覧に戻るリンク
+
+> 本文が**ふつうのテキスト**なら、`{data.notice.body}` で出すだけで安全です（Svelte が自動でエスケープしてくれる）。
+> もし将来 **Markdown や HTML** を本文に置くなら、サーバー側で**安全に整形してから**渡す必要があります（不用意な `{@html ...}` は危ないので、まずはテキストから始めるのがおすすめ）。
+
+</Step>
+
+<Step title="Step 7：4状態UIとのつながり">
+
+[4状態UI](/docs/patterns/loading-error) で出てきた **「loading / error / empty / data」** とのつながりを整理します。
+
+| 状態 | サーバー `load` の場合 | クライアント fetch の場合 |
+| --- | --- | --- |
+| **loading** | **不要**（`load` 完了まで HTML が来ないから） | 必要 |
+| **error** | `error(404, ...)` で**自動で error ページへ** | `state = { status: 'error' }` |
+| **empty** | `{#if data.notices.length === 0}` で出す | 同じ |
+| **data** | `{#each data.notices ...}` | `{#each state.items ...}` |
+
+> サーバー側で `load` してしまえば、**書く状態は2〜3個だけ**で済みます。
+> 「**検索フォーム**」や「**もっと見る**」を後から足したいときに、はじめて 4状態UI が活きます。
+
+> 例えば、お知らせを「**カテゴリで絞りこむ**」機能を入れるなら、クライアント側で `$state` のフィルタを持って [`$derived`](/docs/svelte/derived) で出し分けるか、URL クエリで `load` を作りなおすかの2択になります。
+
+</Step>
+
+</Steps>
+
+## 実務では何につながる？
+
+「一覧→詳細」の型は、見た目を変えるだけで**いろんな業界・用途で同じ**ことができます。
+
+- **自治会のお知らせ** … 地蔵盆・防災訓練・役員会など
+- **ブログ** … 個人ブログ、社内ブログ、製品ブログ
+- **ニュースサイト** … 記事一覧 → 記事詳細
+- **FAQ** … カテゴリ一覧 → 回答ページ
+- **イベント案内** … 予定一覧 → イベント詳細
+- **管理画面の詳細ページ** … ユーザー一覧 → ユーザー詳細
+- **商品一覧と商品詳細** … EC、社内システム
+- **採用情報** … 募集一覧 → 募集詳細
+
+> 「**情報を一覧して、1つを選んでじっくり見せる**」UI は、Web の世界の**いちばん基本のパターン**です。
+
+## 自治会サイトに応用するときのコツ
+
+このページのコードは、**自治会・町内会・PTA・サークル**のサイトに**ほぼそのまま**使えます。
+育てるときのコツを少しだけ。
+
+| 場面 | コツ |
+| --- | --- |
+| **新着順に並べたい** | `notices.sort((a,b) => b.date.localeCompare(a.date))` |
+| **「重要」フラグを付けたい** | `Notice` に `important: boolean` を足し、`{#if important}` で目立たせる |
+| **カテゴリで絞りたい** | `Notice` に `category: 'event' | 'meeting' | ...`、URL を `/notices?category=event` に |
+| **画像を載せたい** | `image?: string` を足し、`<img src=...>` を出す。`static/` か外部 CDN へ |
+| **本文を Markdown で書きたい** | サーバー側で marked などで HTML 化 → クライアントは `{@html safeHtml}` |
+| **更新日を出したい** | `updatedAt?: string` を足して `{#if updatedAt}` |
+| **DB に移したい** | `$lib/server/notices.ts` の中身だけ置きかえ。**呼び出し側は変えなくてOK** |
+| **ログインで管理画面を作る** | `/admin/notices/+layout.server.ts` で認証チェック → `actions` で投稿フォーム |
+
+> 中身（DB / API / Markdown）が変わっても、**`getNoticeSummaries()` と `getNoticeBySlug()` の形を保てば**、画面側のコードはそのまま動きます。これが**インターフェースを揃える**ことの威力です。
+
+## 今日のまとめ
+
+- 「**一覧→詳細**」は、Web のいちばん基本のパターン
+- フォルダ構成： **`/notices/`**（一覧）と **`/notices/[slug]/`**（詳細）
+- 一覧と詳細で**データを分ける**（`getNoticeSummaries` / `getNoticeBySlug`）
+- 詳細が見つからなければ **`throw error(404, ...)`**
+- サーバー側 `load` を使えば、**状態は empty / data の2つで済む**
+- 中身が DB に変わっても、**関数の形を保てば画面はそのまま**
+
+## 今はここだけでOK
+
+「一覧→詳細を作りたい」と思ったら、
+
+1. `$lib/server/...ts` に「**サマリを返す関数**」と「**1件を返す関数**」を作る
+2. `routes/.../+page.server.ts` で `load` を書く（一覧用と詳細用）
+3. `routes/.../+page.svelte` で表示するだけ
+4. 詳細では **`throw error(404, ...)`** を忘れない
+
+この4点で、ほとんどの「情報サイト」が作れます。
+
+## 次に作る小さな練習
+
+- 上の5ファイルをそのまま `src/routes/notices/...` に置いて、`bun run dev` で動かしてみる
+- 存在しない slug（例：`/notices/zzz`）にアクセスして、**404 ページの動き**を確認する
+- `Notice` に `important: boolean` を足し、一覧で **重要マーク** を出す（[class / style](/docs/svelte/class-style) と組み合わせ）
+- 一覧を**新着順**にソートして表示する
+- カテゴリフィルター（`/notices?category=event`）を作って、`load` の中で URL の検索文字列を読む（`url.searchParams.get('category')`）
+- [Todo server版](/docs/examples/todo-server) と組み合わせて、ログインユーザーだけが**お知らせを投稿できる**管理画面を作る

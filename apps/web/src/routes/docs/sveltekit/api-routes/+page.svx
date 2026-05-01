@@ -1,0 +1,312 @@
+---
+title: +server.ts でAPIを作る
+name: +server.ts：APIを作る
+description: ページではなく「データを返す受付窓口」を作る +server.ts。+page.server.ts との違い、form actions との使い分け、search-list をサーバー検索版に発展させる道筋を1ページで整理します。
+category: SvelteKit 実践基本
+order: 35
+---
+
+`+server.ts` は、ひとことで言うと
+
+> **「ページではなく、**データを返す受付窓口**を作るファイル」**
+
+です。
+画面（HTML）ではなく **JSON** を返したいとき、外部から `fetch` で叩きたいときに出番です。
+
+## たとえ話：お店の3つの顔
+
+サイトを**お店**にたとえると、SvelteKit の3種類のファイルはそれぞれの「**役**」です。
+
+| ファイル | たとえ |
+| --- | --- |
+| **`+page.svelte`** | **お店の売り場**（お客さんが見る場所） |
+| **`+page.server.ts`** | **その売り場専用の裏方**（売り場の準備・フォーム受付） |
+| **`+server.ts`** | **外から注文を受ける受付窓口**（API・外部連携） |
+
+「**売り場じゃなく、注文だけを受け取りたい**」——それが `+server.ts` です。
+
+## +server.ts は何をする？
+
+- **JSON を返す**（画面ではなくデータ）
+- **POST でデータを受け取る**（送られてきた中身を処理する）
+- **GET / POST / PUT / DELETE** などの**HTTPメソッドに対応**する
+- **ページではなく API として使う**
+- ブラウザ・他のページ・外部アプリから **`fetch('/api/xxx')`** で呼べる
+
+> ファイル名は **`+server.ts`**。**`+page.svelte` ではない**ところがポイント。
+> URL は他のページと同じく**フォルダ名から決まります**。
+
+## 最小の GET API
+
+`/api/hello` にアクセスすると JSON を返す例です。
+
+```ts
+// src/routes/api/hello/+server.ts
+import { json } from '@sveltejs/kit';
+
+export function GET() {
+	return json({
+		message: 'こんにちは'
+	});
+}
+```
+
+### これは何をしているか
+
+- **ファイル名**は `+server.ts`、フォルダは `routes/api/hello/`
+- `GET` という名前の関数を `export` する → **GET リクエスト**を受け付ける
+- `json({...})` … SvelteKit の便利関数（**JSON Response を作って返す**）
+- ブラウザで `http://localhost:5173/api/hello` を開くと、**`{"message":"こんにちは"}`** が見える
+
+> `+page.svelte` のように HTML を返さない。**データだけ**を返すのが API の仕事です。
+
+## fetch で呼び出す
+
+`+page.svelte` から、上の API を呼んでみます。
+
+```svelte
+<script lang="ts">
+	let message = $state('');
+
+	async function loadHello() {
+		const res = await fetch('/api/hello');
+		const data = await res.json();
+		message = data.message;
+	}
+</script>
+
+<button onclick={loadHello}>呼び出す</button>
+
+{#if message}
+	<p>{message}</p>
+{/if}
+```
+
+### これは何をしているか
+
+- ボタンを押すと **`/api/hello`** に GET リクエスト
+- `await res.json()` … 返ってきた JSON を読みだす
+- 結果を `message` に入れる → 画面に表示
+- `{#if message}` で空のときは出さない（→ [`{#if}`](/docs/svelte/if)）
+
+> `fetch('/api/hello')` の **`/api/hello`** は、`+server.ts` を置いた**フォルダの URL** と一致します。
+
+## POST API の例
+
+「**送られた内容を受け取って処理する**」型です。検索や登録の入口に使います。
+
+```ts
+// src/routes/api/search/+server.ts
+import { json } from '@sveltejs/kit';
+
+export async function POST({ request }) {
+	const { query } = await request.json();
+
+	return json({
+		query,
+		results: []
+	});
+}
+```
+
+```svelte
+<script lang="ts">
+	async function callSearch(query: string) {
+		const res = await fetch('/api/search', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ query })
+		});
+		const data = await res.json();
+		return data.results;
+	}
+</script>
+```
+
+### これは何をしているか
+
+- `POST` 関数を `export` する → **POST リクエスト**を受け付ける
+- `request.json()` … 送られてきた **JSON を読みだす**
+- 呼び出し側は `method: 'POST'` と `body: JSON.stringify(...)` で送る
+- `headers: { 'Content-Type': 'application/json' }` … 「中身は JSON ですよ」のしるし
+
+> `request.json()` と `request.formData()`（[form actions](/docs/sveltekit/form-actions) で出てきた）は、**「受け取り方の2大流派」**です。
+> JSON で送るなら `request.json()`、HTML フォームから送るなら `request.formData()`。
+
+## +page.server.ts との違い
+
+[`+page.server.ts`](/docs/sveltekit/page-server) と並べて整理します。
+
+| | **`+page.server.ts`** | **`+server.ts`** |
+| --- | --- | --- |
+| **目的** | **ページ用**の裏方 | **API**（データの受付窓口） |
+| **何を書く？** | `load` と `actions` | `GET` / `POST` / `PUT` / `DELETE` |
+| **得意な相手** | **HTML フォーム送信**、ページ表示 | **`fetch` 呼び出し**、外部サービス |
+| **何を返す？** | ページ用のデータ（`+page.svelte` に渡る） | **JSON**（や Response）が中心 |
+| **JS なしで動く？** | **動く**（`form actions` の強み） | 基本は **JS あり**（`fetch` で呼ぶ） |
+| **使う場面の例** | お知らせ一覧の表示、Todo の追加フォーム | 検索 API、Webhook 受信、外部からのデータ取得 |
+
+> 「**画面とセットなら `+page.server.ts`、**注文窓口だけ**なら `+server.ts`**」と覚えれば迷いません。
+
+## form actions と API routes の使い分け
+
+実務でいちばん迷うのがここ。**結論は単純**です。
+
+| こうしたい | 選ぶ道具 |
+| --- | --- |
+| 普通の HTML フォームを送って処理したい | **`form actions`** |
+| **JavaScript なしでも動かしたい** | **`form actions`**（一択） |
+| **JSON API として使いたい** | **`+server.ts`** |
+| **他の画面や外部アプリから呼びたい** | **`+server.ts`** |
+| **モバイルアプリから叩きたい** | **`+server.ts`** |
+| ボタン操作や検索で `fetch` で呼びたい | **`+server.ts`** が候補（`form actions` + `use:enhance` でもOK） |
+| **両方欲しい**（同じ処理をフォームでもAPIでも） | **共通ロジックを `$lib/server/` に置いて、両方から呼ぶ** |
+
+> 迷ったら、**「ページの中で完結？ → `form actions`」「外部や JS から呼ぶ？ → `+server.ts`」**。
+> どちらの場合も、**実体は `$lib/server/` の関数**にしておけば、**書き直さずに切り替えられます**。
+
+## search-list とのつながり
+
+[検索リスト](/docs/examples/search-list) では、いまは**ブラウザの中だけ**で `$derived` の `filter` で絞り込んでいます。
+件数が少ないうちは**それで最速**ですが、お知らせが**100件・1000件**と増えてきたら、**サーバー側で検索する版**に発展できます。
+
+```ts
+// src/routes/api/notices/search/+server.ts
+import { json } from '@sveltejs/kit';
+import { searchNotices } from '$lib/server/notices';
+
+export function GET({ url }) {
+	const q = url.searchParams.get('q') ?? '';
+	const results = searchNotices(q);
+	return json({ q, results });
+}
+```
+
+```svelte
+<!-- 呼び出す側のイメージ -->
+<script lang="ts">
+	let query = $state('');
+	let results = $state<{ slug: string; title: string }[]>([]);
+
+	async function search() {
+		const res = await fetch(`/api/notices/search?q=${encodeURIComponent(query)}`);
+		const data = await res.json();
+		results = data.results;
+	}
+</script>
+
+<input bind:value={query} />
+<button onclick={search}>検索</button>
+```
+
+### これは何をしているか
+
+- `url.searchParams.get('q')` … クエリ文字（`?q=...`）を読む
+- `searchNotices(q)` … サーバー側の検索処理（DB に SQL を投げるなど）
+- 呼び出し側は **`fetch` で叩いて結果を `$state` に入れる**だけ
+- `encodeURIComponent` … URL に入れていい形に**安全に変換**する
+
+> 「**ブラウザ側 `filter`**」 → 「**サーバー側 API**」 の切り替えは、**画面の `$state` の部分はほぼ変わらない**のがコツ。
+> [検索リスト](/docs/examples/search-list) で覚えた型がそのまま伸びます。
+
+## Todo とのつながり
+
+[Todo server版](/docs/examples/todo-server) は **`form actions`** で作りました。
+これは「**ブラウザのフォーム送信**」を前提にしているからです。
+
+もし、
+
+- **モバイルアプリ**から Todo を追加したい
+- **外部の管理ツール**から Todo を読みだしたい
+- **別のサイト（Webhook 経由）**から自動投稿したい
+
+——となったら、**`+server.ts` で API 化**する選択肢が出てきます。
+
+```ts
+// src/routes/api/todos/+server.ts（イメージ）
+import { json } from '@sveltejs/kit';
+import { createTodo, getTodos } from '$lib/server/todos';
+
+export function GET() {
+	return json({ todos: getTodos() });
+}
+
+export async function POST({ request }) {
+	const { description } = await request.json();
+	const todo = createTodo(description);
+	return json({ todo }, { status: 201 });
+}
+```
+
+> ポイント：**処理の本体（`createTodo`・`getTodos`）は `$lib/server/todos.ts` のまま**。
+> `form actions` 版と API 版で、**保存処理は1か所だけ**——これが整理のコツです。
+
+## error との組み合わせ
+
+API でも、**エラーをきちんと返す**のが大事です。
+[`error()` / `redirect()`](/docs/sveltekit/error-redirect) は API でも使えます。
+
+```ts
+import { error, json } from '@sveltejs/kit';
+import { getNoticeBySlug } from '$lib/server/notices';
+
+export function GET({ url }) {
+	const slug = url.searchParams.get('slug');
+	if (!slug) {
+		error(400, 'slug が必要です');
+	}
+
+	const notice = getNoticeBySlug(slug);
+	if (!notice) {
+		error(404, 'お知らせが見つかりません');
+	}
+
+	return json({ notice });
+}
+```
+
+### これは何をしているか
+
+- `error(400, '...')` … **悪いリクエスト**として返す（パラメータ不足）
+- `error(404, '...')` … **見つからない**として返す
+- `+server.ts` でも、**ページと同じ書き方**でエラーを返せる
+
+> もう少し細かく制御したいときは `json({ error: '...' }, { status: 400 })` で**自分で形を作る**こともできます。
+> 詳しくは [error / redirect](/docs/sveltekit/error-redirect) の章で。
+
+## 実務では何に使う？
+
+`+server.ts` は、サーバー側の**「外向きの口」**として、いろんな場面で活躍します。
+
+- **検索 API** … 入力に応じてリストを返す
+- **お知らせ取得 API** … 外部サイトや別画面から読む
+- **外部サービス連携** … 別の API のラッパー（API キーをサーバー側に隠す）
+- **管理画面の非同期操作** … ボタンを押すと一部だけ更新（ページ全体を再描画しない）
+- **モバイルアプリ向け API** … iOS / Android アプリのバックエンド
+- **Webhook 受信** … Stripe や GitHub からの通知を受け取る
+- **ダッシュボード用データ取得** … グラフ・集計の数値を返す
+- **自動補完** … 入力中に候補を返すサジェスト
+
+## 今日のまとめ
+
+- **`+server.ts`** は「**データを返す受付窓口**」（ページではない）
+- `GET` / `POST` / `PUT` / `DELETE` を `export` で**メソッドごとに**書く
+- `json({...})` で JSON を返す。`request.json()` で受け取る
+- **`form actions`** は **HTML フォーム / JS なし対応**、**`+server.ts`** は **JSON API / 外部から叩く**
+- 処理の本体は **`$lib/server/...ts`** に書いておけば、**両方から再利用できる**
+- エラーは [`error(404, ...)`](/docs/sveltekit/error-redirect) で返せる
+
+## 今はここだけでOK
+
+> **「普通のフォームなら `form actions`、JSON API なら `+server.ts`」**
+
+このひとことで、9割迷いません。
+
+## 次に作る小さな練習
+
+- `src/routes/api/hello/+server.ts` を作って、`http://localhost:5173/api/hello` をブラウザで開いて **JSON が見える**ことを確認する
+- `+page.svelte` から **`fetch('/api/hello')`** で呼んで、画面に表示してみる
+- POST 版の API（`/api/echo` など）を作って、**送ったものが返ってくる**ことを確認する
+- [検索リスト](/docs/examples/search-list) を**サーバー検索版**に作りなおすとしたら、**API 名は何にするか**を紙に書く（ヒント：`/api/notices/search?q=...`）
+- [Todo server版](/docs/examples/todo-server) の `form actions` を残したまま、**同じ処理を `/api/todos/+server.ts` でも呼べる**ようにしてみる（`createTodo` を再利用）
+- API でわざと `error(400, '...')` を返す版を作って、`fetch` の側でエラーを受けとる動きを試す

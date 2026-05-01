@@ -1,5 +1,28 @@
+# dependencies
 node_modules/
+
+# build artifacts
 dist/
+build/
 .svelte-kit/
+.turbo/
+.wrangler/
+.netlify/
+.vercel/
+*.tsbuildinfo
+
+# environments (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# OS / editor
 .DS_Store
+.vscode/
+.idea/
+
+# project-specific
 packages/motion-gpu/benchmarks/results/*.json

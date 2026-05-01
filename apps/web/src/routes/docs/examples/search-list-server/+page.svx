@@ -1,0 +1,679 @@
+---
+title: サーバー検索できる一覧を作ろう
+name: サーバー検索リスト
+description: search-list / debounce-search / api-routes / Result型 / 型ガード / 4状態UI を全部つなげる集大成実例。検索キーワードをサーバーに送り、絞り込まれた結果を返してもらう本格的なサーバー検索画面を1ページで組み立てます。
+category: 小さなアプリ例
+order: 70
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import ServerSearchDemo from './_ServerSearchDemo.svelte';
+
+	const noticesSource = `// src/lib/server/notices.ts
+//
+// 検索処理の本体。$lib/server/ なのでブラウザに渡らない。
+// 今回はインメモリ。実務ではDBに置きかえる。
+
+import type { Notice } from '$lib/types';
+
+const notices: Notice[] = [
+	{ slug: 'jizobon', title: '地蔵盆のお知らせ', excerpt: '8月23日（土）に開催。', category: '行事' },
+	{ slug: 'bousai-training', title: '防災訓練のお知らせ', excerpt: '9月7日（日）に行います。', category: '防災' },
+	{ slug: 'yakuinkai', title: '役員会のお知らせ', excerpt: '10月5日（日）に開催。', category: '会議' }
+	// ... 続く
+];
+
+export function searchNotices(query: string): Notice[] {
+	const q = query.trim();
+	if (q === '') return [];
+
+	return notices.filter(
+		(n) =>
+			n.title.includes(q) ||
+			n.excerpt.includes(q) ||
+			n.category.includes(q)
+	);
+}
+`;
+
+	const typesSource = `// src/lib/types.ts
+//
+// クライアント・サーバー両方で使う共通の型と型ガード。
+
+export type Notice = {
+	slug: string;
+	title: string;
+	excerpt: string;
+	category: string;
+};
+
+export type SearchResponse = {
+	results: Notice[];
+};
+
+export type AppError = {
+	message: string;
+	status?: number;
+};
+
+export type Result<T, E> =
+	| { ok: true; data: T }
+	| { ok: false; error: E };
+
+// API レスポンスの形を確認する型ガード
+export function isSearchResponse(value: unknown): value is SearchResponse {
+	if (typeof value !== 'object' || value === null) return false;
+	const v = value as Record<string, unknown>;
+	if (!Array.isArray(v.results)) return false;
+
+	return v.results.every((item) => {
+		if (typeof item !== 'object' || item === null) return false;
+		const n = item as Record<string, unknown>;
+		return (
+			typeof n.slug === 'string' &&
+			typeof n.title === 'string' &&
+			typeof n.excerpt === 'string' &&
+			typeof n.category === 'string'
+		);
+	});
+}
+`;
+
+	const apiSource = `// src/routes/api/notices/search/+server.ts
+//
+// 検索APIの受付窓口。fetch から呼ばれる。
+
+import { json } from '@sveltejs/kit';
+import { searchNotices } from '$lib/server/notices';
+import type { SearchResponse } from '$lib/types';
+
+export function GET({ url }) {
+	const q = url.searchParams.get('q') ?? '';
+
+	if (q.trim() === '') {
+		const empty: SearchResponse = { results: [] };
+		return json(empty);
+	}
+
+	const results = searchNotices(q);
+	const response: SearchResponse = { results };
+	return json(response);
+}
+`;
+
+	const clientSource = `// src/lib/client/search.ts
+//
+// クライアント側の検索ヘルパー。Result<T, E> で成功/失敗を返す。
+
+import { isSearchResponse } from '$lib/types';
+import type { AppError, Notice, Result } from '$lib/types';
+
+export async function fetchSearchResults(
+	query: string
+): Promise<Result<Notice[], AppError>> {
+	try {
+		const res = await fetch(
+			\`/api/notices/search?q=\${encodeURIComponent(query)}\`
+		);
+
+		if (!res.ok) {
+			return {
+				ok: false,
+				error: { message: '検索に失敗しました', status: res.status }
+			};
+		}
+
+		const data: unknown = await res.json();
+
+		if (!isSearchResponse(data)) {
+			return {
+				ok: false,
+				error: { message: '検索結果の形が違います' }
+			};
+		}
+
+		return { ok: true, data: data.results };
+	} catch (e) {
+		return {
+			ok: false,
+			error: {
+				message: e instanceof Error ? e.message : '不明なエラーです'
+			}
+		};
+	}
+}
+`;
+
+	const pageSource = `<!-- src/routes/notices-search/+page.svelte -->
+<script lang="ts">
+	import { fetchSearchResults } from '$lib/client/search';
+	import type { Notice } from '$lib/types';
+
+	type State =
+		| { kind: 'idle' }
+		| { kind: 'loading' }
+		| { kind: 'error'; message: string }
+		| { kind: 'success'; results: Notice[]; query: string };
+
+	let query = $state('');
+	let state = $state<State>({ kind: 'idle' });
+
+	$effect(() => {
+		const q = query.trim();
+
+		if (q === '') {
+			state = { kind: 'idle' };
+			return;
+		}
+
+		let cancelled = false;
+
+		const timer = setTimeout(async () => {
+			state = { kind: 'loading' };
+			const result = await fetchSearchResults(q);
+			if (cancelled) return;
+			if (result.ok) {
+				state = { kind: 'success', results: result.data, query: q };
+			} else {
+				state = { kind: 'error', message: result.error.message };
+			}
+		}, 500);
+
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	});
+<\/script>
+
+<h1>お知らせを検索</h1>
+
+<input type="search" bind:value={query} placeholder="検索ワード" />
+
+{#if state.kind === 'idle'}
+	<p>検索ワードを入れてください</p>
+{:else if state.kind === 'loading'}
+	<p>サーバーに問い合わせ中…</p>
+{:else if state.kind === 'error'}
+	<p class="error">{state.message}</p>
+{:else if state.results.length === 0}
+	<p>「{state.query}」に合うお知らせは見つかりません</p>
+{:else}
+	<p>{state.results.length} 件見つかりました</p>
+	<ul>
+		{#each state.results as notice (notice.slug)}
+			<li>
+				<strong>{notice.title}</strong>
+				<span>{notice.excerpt}</span>
+			</li>
+		{/each}
+	</ul>
+{/if}
+`;
+</script>
+
+## ひとことで言うと
+
+サーバー検索リストは、ひとことで言うと
+
+> **「検索キーワードをサーバーに送り、サーバーで絞り込んだ結果を返してもらう仕組み」**
+
+です。
+このサイトでこれまで作ってきた **search-list / debounce-search / api-routes / Result型 / 型ガード / 4状態UI** を**全部つなげる**集大成実例です。
+
+## たとえ話：手元のカード vs 受付の奥の棚
+
+| たとえ | コード |
+| --- | --- |
+| **手元のカード**から探す | [検索リスト](/docs/examples/search-list)（ブラウザ内 `filter`） |
+| **受付に渡して、奥の棚から探してもらう** | このページ（サーバー検索） |
+
+カードが**少ない**なら手元で十分。
+カードが**多い**なら、受付（API）に渡して**奥の棚（DB / サーバー）**で探してもらうのが自然です。
+**サイトが大きくなるにつれて、後者が必要**になります。
+
+## このページで作るもの
+
+- **検索欄**（debounce 付き）
+- **`/api/notices/search`** API
+- **`fetch`** で検索リクエスト
+- **Result 型**で成功/失敗を扱う
+- **型ガード**でレスポンスを安全に確認
+- **idle / loading / error / empty / success** の5状態UI
+
+## これまでの章とのつながり
+
+このページは、**6章の合流点**です。
+
+- [検索リスト](/docs/examples/search-list)：クライアント側 filter の出発点
+- [debounce検索](/docs/patterns/debounce-search)：入力を待ってから1回だけ
+- [+server.ts](/docs/sveltekit/api-routes)：検索APIの作り方
+- [4状態UI](/docs/patterns/loading-error)：表示の出し分け
+- [Result型](/docs/typescript/result-pattern)：成功/失敗を型で扱う
+- [型ガード](/docs/typescript/type-guard)：unknown を安全に絞り込む
+- [APIレスポンス](/docs/typescript/api-response)：レスポンスに型を貼る
+- [$effect](/docs/svelte/effect) ＋ [bind](/docs/svelte/bind)：debounce の中身
+
+## ブラウザ内検索とサーバー検索の違い
+
+| 観点 | **ブラウザ内検索** | **サーバー検索** |
+| --- | --- | --- |
+| **データ量** | 少ない（数十〜数百件） | 多い（千件〜何百万件） |
+| **どこで絞る？** | クライアント側 `filter` | サーバー側（DB / 全文検索） |
+| **相性のよい仕組み** | [`$derived`](/docs/svelte/derived) | [`+server.ts`](/docs/sveltekit/api-routes) ＋ debounce |
+| **権限チェック** | できない（全データを見られる） | **できる**（API 側で判断） |
+| **DB 検索（`LIKE` / 全文）** | できない | できる |
+| **速さ** | 瞬間的 | 通信があるぶん少し遅い |
+| **実装の手間** | 少ない | 少し多い（API + 型 + Result + UI） |
+
+> **「データが手のひらに収まる量」**なら[検索リスト](/docs/examples/search-list)、**「データが棚に並ぶ量」**ならこのページ、と覚えれば十分です。
+
+## 完成プレビュー
+
+下のプレビューで疑似サーバー検索を試せます（debounce 500ms ＋ 疑似応答 600ms）。
+**`error`** と入れると、サーバーエラーを再現します。
+タブを切り替えると、**実際にこの画面を作る5ファイル**が読めます。
+
+<ComponentPreview
+	sources={[
+		{ name: 'src/lib/server/notices.ts', code: noticesSource, language: 'typescript' },
+		{ name: 'src/lib/types.ts', code: typesSource, language: 'typescript' },
+		{ name: 'src/routes/api/notices/search/+server.ts', code: apiSource, language: 'typescript' },
+		{ name: 'src/lib/client/search.ts', code: clientSource, language: 'typescript' },
+		{ name: 'src/routes/notices-search/+page.svelte', code: pageSource, language: 'svelte' }
+	]}
+>
+	<ServerSearchDemo />
+</ComponentPreview>
+
+## ファイル構成
+
+```bash
+src/
+├─ lib/
+│  ├─ types.ts                              ← 共通の型 + 型ガード
+│  ├─ client/
+│  │  └─ search.ts                          ← fetchSearchResults（Result版）
+│  └─ server/
+│     └─ notices.ts                         ← サーバー専用の検索処理
+└─ routes/
+   ├─ api/
+   │  └─ notices/
+   │     └─ search/
+   │        └─ +server.ts                   ← 検索API
+   └─ notices-search/
+      └─ +page.svelte                       ← 検索画面
+```
+
+役割を一言で：
+
+| ファイル | 役割 |
+| --- | --- |
+| `lib/types.ts` | **`Notice` / `SearchResponse` / `Result` / `AppError`** + `isSearchResponse` 型ガード |
+| `lib/server/notices.ts` | サーバー専用の **`searchNotices(query)`** |
+| `routes/api/notices/search/+server.ts` | **GET /api/notices/search?q=...** の受付窓口 |
+| `lib/client/search.ts` | **`fetchSearchResults(query)`**（Result を返す） |
+| `routes/notices-search/+page.svelte` | 検索画面（debounce + 5状態UI） |
+
+それでは **7ステップ**で組み立てます。
+
+<Steps>
+
+<Step title="Step 1：Notice型と検索処理を作る">
+
+`$lib/server/notices.ts` に**サーバー専用**の検索処理を作ります。
+
+```ts
+// src/lib/server/notices.ts
+import type { Notice } from '$lib/types';
+
+const notices: Notice[] = [
+	{ slug: 'jizobon', title: '地蔵盆のお知らせ', excerpt: '8月23日（土）に開催。', category: '行事' },
+	{ slug: 'bousai-training', title: '防災訓練のお知らせ', excerpt: '9月7日（日）に行います。', category: '防災' }
+	// ... 続く
+];
+
+export function searchNotices(query: string): Notice[] {
+	const q = query.trim();
+	if (q === '') return [];
+
+	return notices.filter(
+		(n) =>
+			n.title.includes(q) ||
+			n.excerpt.includes(q) ||
+			n.category.includes(q)
+	);
+}
+```
+
+### これは何をしているか
+
+- `$lib/server/` 配下なので**ブラウザに絶対渡らない**
+- `query.trim() === ''` なら**空配列**を返す（**全件返さない**：負荷防止）
+- `title` / `excerpt` / `category` の**3つのフィールド**で検索
+
+> 「**空のときに全件返すか・空を返すか**」は方針の分かれ目。
+> **初心者向けは空を返すほうが安全**です（DB なら全件 SELECT は重いから）。
+
+</Step>
+
+<Step title="Step 2：+server.ts で検索APIを作る">
+
+`/api/notices/search?q=...` の **API ルート**を作ります（→ [+server.ts](/docs/sveltekit/api-routes)）。
+
+```ts
+// src/routes/api/notices/search/+server.ts
+import { json } from '@sveltejs/kit';
+import { searchNotices } from '$lib/server/notices';
+import type { SearchResponse } from '$lib/types';
+
+export function GET({ url }) {
+	const q = url.searchParams.get('q') ?? '';
+
+	if (q.trim() === '') {
+		const empty: SearchResponse = { results: [] };
+		return json(empty);
+	}
+
+	const results = searchNotices(q);
+	const response: SearchResponse = { results };
+	return json(response);
+}
+```
+
+### これは何をしているか
+
+- `url.searchParams.get('q')` … クエリ文字（`?q=...`）を読む
+- 空なら**空の SearchResponse** を返す
+- 検索 → **`SearchResponse` 型**に詰めて `json(...)` で返す
+- 戻りに**`response: SearchResponse`** と型を明示することで、**形違いを防ぐ**
+
+> ブラウザで `http://localhost:5173/api/notices/search?q=防災` を開けば、**JSON で結果が確認**できます。
+
+</Step>
+
+<Step title="Step 3：レスポンス型を決める">
+
+クライアント・サーバー両方で使う**共通の型**を `lib/types.ts` に置きます（→ [APIレスポンス](/docs/typescript/api-response)）。
+
+```ts
+// src/lib/types.ts
+export type Notice = {
+	slug: string;
+	title: string;
+	excerpt: string;
+	category: string;
+};
+
+export type SearchResponse = {
+	results: Notice[];
+};
+
+export type AppError = {
+	message: string;
+	status?: number;
+};
+
+export type Result<T, E> =
+	| { ok: true; data: T }
+	| { ok: false; error: E };
+```
+
+### これは何をしているか
+
+- `Notice` … 1件の型
+- `SearchResponse` … API の戻り全体（→ [APIレスポンス](/docs/typescript/api-response)）
+- `AppError` … 失敗の型（メッセージ + ステータス）
+- `Result<T, E>` … [Result型](/docs/typescript/result-pattern) の最小定義
+
+> **「型を1か所にまとめる」**ことで、サーバーもクライアントも**同じ型**を使える状態になります。
+
+</Step>
+
+<Step title="Step 4：型ガードで確認する">
+
+「**API から返ってきた値が、本当に `SearchResponse` の形か**」を確認するのが [型ガード](/docs/typescript/type-guard) です。
+
+```ts
+// src/lib/types.ts に追加
+export function isSearchResponse(value: unknown): value is SearchResponse {
+	if (typeof value !== 'object' || value === null) return false;
+	const v = value as Record<string, unknown>;
+	if (!Array.isArray(v.results)) return false;
+
+	return v.results.every((item) => {
+		if (typeof item !== 'object' || item === null) return false;
+		const n = item as Record<string, unknown>;
+		return (
+			typeof n.slug === 'string' &&
+			typeof n.title === 'string' &&
+			typeof n.excerpt === 'string' &&
+			typeof n.category === 'string'
+		);
+	});
+}
+```
+
+### これは何をしているか
+
+- `value is SearchResponse` … 「**`true` ならこの型として扱える**」のしるし
+- `Array.isArray(v.results)` … 配列であることを確認
+- `v.results.every(...)` … **全要素が Notice の形**か確認
+- 1つでも違えば `false`
+
+> [型ガード](/docs/typescript/type-guard) で覚えた **「1件の型ガード → every で配列に拡張」** がここで活きます。
+
+</Step>
+
+<Step title="Step 5：Result型で安全に返す">
+
+クライアント側の検索ヘルパーは **`Result<Notice[], AppError>`** を返すように作ります（→ [Result型](/docs/typescript/result-pattern)）。
+
+```ts
+// src/lib/client/search.ts
+import { isSearchResponse } from '$lib/types';
+import type { AppError, Notice, Result } from '$lib/types';
+
+export async function fetchSearchResults(
+	query: string
+): Promise<Result<Notice[], AppError>> {
+	try {
+		const res = await fetch(
+			`/api/notices/search?q=${encodeURIComponent(query)}`
+		);
+
+		if (!res.ok) {
+			return {
+				ok: false,
+				error: { message: '検索に失敗しました', status: res.status }
+			};
+		}
+
+		const data: unknown = await res.json();
+
+		if (!isSearchResponse(data)) {
+			return {
+				ok: false,
+				error: { message: '検索結果の形が違います' }
+			};
+		}
+
+		return { ok: true, data: data.results };
+	} catch (e) {
+		return {
+			ok: false,
+			error: {
+				message: e instanceof Error ? e.message : '不明なエラーです'
+			}
+		};
+	}
+}
+```
+
+### これは何をしているか
+
+- `Promise<Result<Notice[], AppError>>` … 戻りの形が**型で見える**
+- HTTP エラー / 形違い / 通信失敗 の**3種類の失敗**を、**全部同じ Result**で返す
+- `data: unknown` で受けて、`isSearchResponse(data)` で**形を確認してから**使う
+- `e instanceof Error` で `e.message` を**安全に**取り出す
+
+> 「**fetch → ok確認 → unknown → 型ガード → Result**」が**実務鉄板の流れ**です。
+
+</Step>
+
+<Step title="Step 6：Svelte側でdebounce検索する">
+
+`+page.svelte` で、**debounce + Result + 5状態UI** を組み立てます。
+
+```svelte
+<script lang="ts">
+	import { fetchSearchResults } from '$lib/client/search';
+	import type { Notice } from '$lib/types';
+
+	type State =
+		| { kind: 'idle' }
+		| { kind: 'loading' }
+		| { kind: 'error'; message: string }
+		| { kind: 'success'; results: Notice[]; query: string };
+
+	let query = $state('');
+	let state = $state<State>({ kind: 'idle' });
+
+	$effect(() => {
+		const q = query.trim();
+
+		if (q === '') {
+			state = { kind: 'idle' };
+			return;
+		}
+
+		let cancelled = false;
+
+		const timer = setTimeout(async () => {
+			state = { kind: 'loading' };
+			const result = await fetchSearchResults(q);
+			if (cancelled) return;
+			if (result.ok) {
+				state = { kind: 'success', results: result.data, query: q };
+			} else {
+				state = { kind: 'error', message: result.error.message };
+			}
+		}, 500);
+
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	});
+</script>
+
+<input type="search" bind:value={query} placeholder="検索ワード" />
+
+{#if state.kind === 'idle'}
+	<p>検索ワードを入れてください</p>
+{:else if state.kind === 'loading'}
+	<p>サーバーに問い合わせ中…</p>
+{:else if state.kind === 'error'}
+	<p class="error">{state.message}</p>
+{:else if state.results.length === 0}
+	<p>「{state.query}」に合うお知らせは見つかりません</p>
+{:else}
+	<ul>
+		{#each state.results as notice (notice.slug)}
+			<li><strong>{notice.title}</strong></li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `$state<State>` … 5状態の[union 型](/docs/typescript/union-literal)
+- [`$effect`](/docs/svelte/effect) で `query` を見張り、`setTimeout` で 500ms 待つ（→ [debounce検索](/docs/patterns/debounce-search)）
+- cleanup で `clearTimeout` ＋ `cancelled = true`（**遅延応答の競合を防ぐ**）
+- **`if (result.ok)`** で成功/失敗を分岐（→ [Result型](/docs/typescript/result-pattern)）
+- 5状態を [`{#if}`](/docs/svelte/if) で出し分け（→ [4状態UI](/docs/patterns/loading-error)）
+
+> **6章の道具を1ファイルに集めた**最小完成形です。
+
+</Step>
+
+<Step title="Step 7：実務で使うときの注意">
+
+実務でこのページを**そのままコピペできる**ように、いくつかの注意点を表にまとめます。
+
+| 注意点 | 対応 |
+| --- | --- |
+| `q` は URL クエリ | **長すぎる値**には注意。URL の上限（**約2000文字**）を超えるとエラーに。POST に切り替える選択肢も |
+| **権限チェック**が必要な検索 | `+server.ts` の中で **`event.locals.user`** を確認して 401 / 403（→ [hooks](/docs/sveltekit/hooks)） |
+| **DB 検索** | `LIKE '%query%'` か全文検索（PostgreSQL なら `tsvector`、MySQL なら `MATCH AGAINST`） |
+| **debounce で API 呼び出しを減らす** | このページの 500ms はちょうどいい |
+| **古い検索結果が遅れて返る競合** | `cancelled` フラグで対策（実演済み） |
+| **ページネーション** | 結果が多いときは `?q=...&page=2&size=20` のような形で分割 |
+| **外部 API** | 自分の API 以上に**型ガード**と**Result**が大事 |
+| **キャッシュ** | サーバー側で同じクエリを覚えると、さらに速くなる |
+| **クエリログ** | 「どんなキーワードで検索されたか」を記録すると改善材料になる |
+
+</Step>
+
+</Steps>
+
+## 実務では何に使う？
+
+このページのコードは、**情報の量が増えるあらゆる検索画面**にそのまま応用できます。
+
+- **お知らせ検索**（自治会・社内ポータル・PTA）
+- **FAQ 検索**
+- **自治会資料検索**（議事録・配布物・アーカイブ）
+- **管理画面の会員検索**（名前 / メール / 部署）
+- **商品検索**（カテゴリ + キーワード）
+- **イベント検索**（日付 + キーワード）
+- **タグ検索**
+- **オートコンプリート**（入力中に候補を返す）
+- **コマンドパレット**（⌘K のようなランチャー）
+
+> このサイトの上部の検索ボックス（⌘ K）も、考え方はこれの**親戚**です。
+
+## 既存記事との接続マップ（集大成）
+
+| 章 | このページでの使われ方 |
+| --- | --- |
+| [検索リスト](/docs/examples/search-list) | クライアント側 `filter` の出発点 → **サーバー検索版に発展** |
+| [debounce検索](/docs/patterns/debounce-search) | 入力を 500ms 待ってから1回だけ |
+| [+server.ts](/docs/sveltekit/api-routes) | `/api/notices/search` の本体 |
+| [APIレスポンス](/docs/typescript/api-response) | `SearchResponse` 型を**両側で共有** |
+| [型ガード](/docs/typescript/type-guard) | `isSearchResponse(data)` で**安全に絞り込み** |
+| [Result型](/docs/typescript/result-pattern) | `Promise<Result<Notice[], AppError>>` で**3種類の失敗**を1型に |
+| [4状態UI](/docs/patterns/loading-error) | 5状態の union を `{#if}` で出し分け |
+| [$effect](/docs/svelte/effect) | `setTimeout` ＋ cleanup（debounce の心臓部） |
+| [bind](/docs/svelte/bind) | 入力欄と `query` のひも |
+| [Union / Literal](/docs/typescript/union-literal) | `State` 型の discriminated union |
+
+「**今までの章ぜんぶ**」が1ページに集合する、**サイトの集大成実例**です。
+
+## 今日のまとめ
+
+- サーバー検索 ＝ **「キーワードを送って、サーバーで絞った結果を受けとる」**
+- ファイル構成は **`types.ts` / `server/notices.ts` / `+server.ts` / `client/search.ts` / `+page.svelte`** の5枚
+- **`Result<Notice[], AppError>`** で**3種類の失敗**（HTTP / 形違い / 通信）を**1つの型**にまとめる
+- **debounce + cancelled フラグ**で API を**減らし**、**遅延応答の競合**も防ぐ
+- 5状態（**idle / loading / error / empty / success**）で**画面が真っ白にならない**
+- 実務では **権限チェック・ページネーション・キャッシュ**を順次足していく
+
+## 今はここだけでOK
+
+> **「fetch → ok確認 → unknown → 型ガード → Result → if (result.ok) で分岐」**
+
+この流れを**頭に焼きつけておけば**、サーバー検索画面のほとんどが書けます。
+
+## 次に作る小さな練習
+
+- `/api/notices/search?q=防災` を**ブラウザのアドレスバー**で叩いて、**生の JSON** を見る練習をする
+- `SearchResponse` 型を**何も見ずに書く**
+- `fetchSearchResults` の流れ（fetch → ok → unknown → 型ガード → Result）を**紙に書く**
+- [debounce検索](/docs/patterns/debounce-search) のデモと、このページのデモを**横に並べて見比べる**
+- `cancelled` フラグの**ある版**と**ない版**を頭の中で動かして、何が違うか考える
+- 自分のサイトに `/api/notices/search` を実装して、**本物のサーバー検索**にしてみる
+- ページネーション（`?q=...&page=2`）を足すなら、`SearchResponse` をどう変えるか考える（ヒント：`{ results, total, page }`）
+- 外部 API を叩く版に書きかえるなら、**型ガードを厳しくする**（より多くの形違いを想定）

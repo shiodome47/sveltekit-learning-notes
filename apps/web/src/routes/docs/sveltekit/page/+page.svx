@@ -1,0 +1,96 @@
+---
+title: +page.svelte は「ページ本体」
+name: +page.svelte：ページ本体
+description: SvelteKit では、フォルダがそのまま URL になります。+page.svelte が「そのページの本体」です。
+category: SvelteKit 基本
+order: 10
+---
+
+SvelteKit のページの仕組みは、ひとことで言うと
+
+> **「フォルダがそのまま URL になる」**
+
+です。
+
+## たとえ話：本のしおりと目次
+
+本の中で、章のタイトルを見れば「だいたいどのページか」わかりますよね。
+SvelteKit も同じです。
+`src/routes/` の中の**フォルダ名**が、そのまま URL になります。
+
+## いちばん小さな例
+
+```bash
+src/routes/
+├─ +page.svelte         ← トップページ（/）
+└─ about/
+   └─ +page.svelte      ← /about のページ
+```
+
+### これは何をしているか
+
+- `src/routes/+page.svelte` … `/` （トップページ）の本体
+- `src/routes/about/+page.svelte` … `/about` の本体
+
+`about` というフォルダを作って、その中に `+page.svelte` を置くだけで、
+`/about` という URL でアクセスできるページができあがります。
+
+## +page.svelte の中身
+
+`+page.svelte` は、ふつうの Svelte ファイルです。
+書き方は普段の `.svelte` と同じです。
+
+```svelte
+<!-- src/routes/about/+page.svelte -->
+<h1>このサイトについて</h1>
+<p>はじめての SvelteKit ページです。</p>
+```
+
+### これは何をしているか
+
+`<h1>` と `<p>` が並んでいるだけのシンプルな HTML です。
+`/about` にアクセスすると、これがそのまま表示されます。
+
+## もう少し増やしてみる
+
+```bash
+src/routes/
+├─ +page.svelte              ← /
+├─ about/
+│  └─ +page.svelte           ← /about
+└─ blog/
+   ├─ +page.svelte           ← /blog
+   └─ hello/
+      └─ +page.svelte        ← /blog/hello
+```
+
+### これは何をしているか
+
+- フォルダを**入れ子**にすると、URL もそのまま入れ子になります
+- `/blog/hello` のページは `blog/hello/+page.svelte`
+
+ファイル名はぜんぶ **`+page.svelte`** で固定。
+**フォルダ名 = URL** がいちばんのポイントです。
+
+## 大事なルール3つ
+
+1. ページの中身は **必ず `+page.svelte`** という名前
+2. 先頭に `+`（プラス）が付く（ふつうの `page.svelte` ではダメ）
+3. 置き場所は **`src/routes/`** の中
+
+## 今日のまとめ
+
+- **フォルダ = URL**
+- ページ本体は **`+page.svelte`**（先頭に `+` が必要）
+- `src/routes/` の中に置く
+
+## 今はここだけでOK
+
+「URL を増やしたい！」と思ったら、`src/routes/` の下にフォルダを作って、
+中に `+page.svelte` を置く。それだけでOK。
+
+## 次に作る小さな練習
+
+- `src/routes/about/+page.svelte` を作って `/about` を表示する
+- `src/routes/hello/+page.svelte` を作って `<h1>こんにちは</h1>` を出してみる
+- トップページ `+page.svelte` から `/about` にリンクを貼ってみる（`<a href="/about">about</a>`）

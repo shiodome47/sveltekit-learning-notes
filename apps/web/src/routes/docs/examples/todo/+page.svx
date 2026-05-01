@@ -1,0 +1,369 @@
+---
+title: Todoアプリを作ってみよう
+name: Todo アプリ
+description: $state / $derived / props / bind / {#if} / {#each} を、ぜんぶ1つのアプリで使ってみる総合実例。今まで読んだ章を振り返りながら、動くTodoアプリを少しずつ組み立てます。
+category: 小さなアプリ例
+order: 10
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import TodoApp from './_TodoApp.svelte';
+	import todoSource from './_TodoApp.svelte?raw';
+</script>
+
+## ひとことで言うと
+
+Todoアプリは、**Svelteの基本をぜんぶ詰めこんで練習できる小さなアプリ**です。
+これまでの章で出てきた `$state` / `$derived` / `bind` / `{#if}` / `{#each}` を、**1つのアプリで全部使います**。
+
+## このページで作るもの
+
+- 入力欄から **Todo を追加**できる
+- チェックボックスで **完了にできる**
+- いま **残り何件か**が自動で出る
+- **完了済みをまとめて削除**できる
+- Todo が0件のときは **やさしいメッセージ**を出す
+
+## 先に読んでおくと、ぐっと楽になる章
+
+このページは、以下の章で扱った道具を**1つずつ組み合わせる**形で進みます。
+あいまいなところは、リンク先で1分だけ復習すると、コードが全部「読める」感覚になります。
+
+- [$state：変わる値](/docs/svelte/state)
+- [$derived：自動で計算](/docs/svelte/derived)
+- [$effect：変化に反応](/docs/svelte/effect)（このページの「次の発展」で少し触れます）
+- [props：親から子へ渡す荷物](/docs/svelte/props)
+- [bind：画面とデータをつなぐ](/docs/svelte/bind)
+- [`{#if}`：条件で表示する](/docs/svelte/if)
+- [`{#each}`：リストを並べる](/docs/svelte/each)
+- [form actions：フォームの受付](/docs/sveltekit/form-actions)（サーバー保存版に進化させたいとき）
+
+## 完成プレビュー
+
+下のプレビューが**今日のゴール**です。実際に動かしてみてください。
+タブを切り替えると、いま動いているコードがそのまま読めます（コピーボタンも使えます）。
+
+<ComponentPreview
+	sources={[
+		{ name: '_TodoApp.svelte', code: todoSource, language: 'svelte' }
+	]}
+>
+	<TodoApp />
+</ComponentPreview>
+
+ここからは、このコードを **9ステップに分けて**作っていきます。
+各ステップで「**何をしたか**」と「**どの章のどの道具か**」を書きます。
+
+<Steps>
+
+<Step title="Step 1：Todoの型を作る">
+
+最初に、Todo という荷物の中身を決めます。
+TypeScript の **型**は「**Todoにつける名札**」だと思ってください（→ [型は名札](/docs/typescript/types)）。
+
+```ts
+type Todo = {
+	id: number;
+	text: string;
+	done: boolean;
+};
+```
+
+### これは何をしているか
+
+- `id` … その Todo を見分けるための**番号**（後で `{#each}` の key に使う）
+- `text` … 「やること」の文字
+- `done` … 終わったかどうか（true / false）
+
+「Todo にはこの3つが必ず入っている」と決めるだけ。
+これで、あとで間違ったデータを入れたら**TypeScript が教えてくれる**ようになります。
+
+</Step>
+
+<Step title="Step 2：$state でデータを持つ">
+
+「**変わる値**」は、すべて [$state](/docs/svelte/state) に入れます。
+
+```ts
+let todos = $state<Todo[]>([
+	{ id: 1, text: 'Svelte の基本を見直す', done: false },
+	{ id: 2, text: '夕ごはんを買う', done: true }
+]);
+let newTodo = $state('');
+```
+
+### これは何をしているか
+
+- `todos` … **Todo のリスト**を入れる箱
+- `newTodo` … **これから追加する Todo の文字**を入れる箱
+- どちらも `$state(...)` に包んだので、**中身が変わると画面が自動で書き換わる**
+
+`$state<Todo[]>(...)` は「**Todo の配列ですよ**」と型を教えています。
+
+</Step>
+
+<Step title="Step 3：bind:value で入力欄とつなぐ">
+
+入力欄と `newTodo` を、`bind:value` で**ひも**でつなぎます（→ [bind](/docs/svelte/bind)）。
+
+```svelte
+<input type="text" bind:value={newTodo} placeholder="やることを書く" />
+```
+
+### これは何をしているか
+
+- `bind:value={newTodo}` … 「**入力欄と `newTodo` をひもでつなぐ**」
+- ユーザーが入力 → `newTodo` も自動で変わる
+- コードから `newTodo = ''` にする → **入力欄も自動で空になる**
+
+両方向に動くのが `bind` のポイントです。
+
+</Step>
+
+<Step title="Step 4：追加ボタンで Todo を増やす">
+
+「追加」ボタンを押したときの動きを書きます。
+
+```ts
+function addTodo() {
+	const text = newTodo.trim();
+	if (text === '') return;
+	todos.push({ id: Date.now(), text, done: false });
+	newTodo = '';
+}
+```
+
+```svelte
+<form onsubmit={(e) => { e.preventDefault(); addTodo(); }}>
+	<input type="text" bind:value={newTodo} placeholder="やることを書く" />
+	<button type="submit">追加</button>
+</form>
+```
+
+### これは何をしているか
+
+- `newTodo.trim()` … **前後の空白を消す**
+- `if (text === '') return` … **空っぽならなにもしない**（簡単なバリデーション）
+- `Date.now()` … いまの時刻（ミリ秒）を **id** として使う
+- `todos.push(...)` … リストに**新しい Todo を1つ追加**
+- `newTodo = ''` … **入力欄を空に戻す**
+- `<form>` で囲んで `onsubmit` にしたので、**Enter キーでも追加**できる
+
+> 「追加できない条件」を **早く return する**のは、実務でもとても大事な書き方です。
+
+</Step>
+
+<Step title="Step 5：each で Todo を並べる">
+
+リストの中身を、画面に1個ずつ並べます（→ [`{#each}`](/docs/svelte/each)）。
+
+```svelte
+<ul>
+	{#each todos as todo (todo.id)}
+		<li>
+			<span>{todo.text}</span>
+		</li>
+	{/each}
+</ul>
+```
+
+### これは何をしているか
+
+- `{#each todos as todo}` … 「`todos` から1個ずつ `todo` という名前で取り出す」
+- `(todo.id)` … その **Todo を見分ける目印**（key）
+- `<li>` の中に `{todo.text}` を出すだけ
+
+key を付けておくと、Svelte が**どの行がどれか**を覚えてくれるので、並び替えや削除でバグが起きにくくなります。
+
+</Step>
+
+<Step title="Step 6：bind:checked で完了を切り替える">
+
+各 Todo の「終わったよ」状態を、チェックボックスとつなぎます。
+
+```svelte
+<li class:done={todo.done}>
+	<label>
+		<input type="checkbox" bind:checked={todo.done} />
+		<span>{todo.text}</span>
+	</label>
+</li>
+```
+
+### これは何をしているか
+
+- `bind:checked={todo.done}` … チェックボックスと **その Todo の `done`** をひもでつなぐ
+- チェックを入れる → `todo.done` が `true` になる
+- 外す → `false` になる
+- `class:done={todo.done}` … **`done` が真のときだけ** `class="done"` が付く（CSSで薄く表示）
+
+> 「`{#each}` の中で、各行の `bind`」は、Svelte の**もっとも気持ちいい書き味**のひとつです。
+
+</Step>
+
+<Step title="Step 7：$derived で残り件数を出す">
+
+「**残り何件か**」は、もとの `todos` から決まる値なので [$derived](/docs/svelte/derived) の出番です。
+
+```ts
+const remaining = $derived(todos.filter((t) => !t.done).length);
+```
+
+```svelte
+<span>残り <strong>{remaining}</strong> 件</span>
+```
+
+### これは何をしているか
+
+- `todos.filter((t) => !t.done)` … **終わってないものだけ**を取り出す
+- `.length` … その**数**
+- `$derived(...)` … `todos` が変わるたびに**自動で計算**される
+
+自分で「`remaining = ...` と書きかえる」コードは**1行も書いていません**。
+そこが `$derived` のすごいところです。
+
+</Step>
+
+<Step title="Step 8：if で「0件メッセージ」を出す">
+
+リストが空のときは、ぽつんと寂しくならないように、メッセージを出します（→ [`{#if}`](/docs/svelte/if)）。
+
+```svelte
+{#if todos.length === 0}
+	<p class="empty">やることはまだありません 🎉</p>
+{:else}
+	<ul>
+		{#each todos as todo (todo.id)}
+			<li>...</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `todos.length === 0` … リストが**空かどうか**
+- 空なら、にこやかなメッセージ
+- 空じゃないなら、リストを表示
+
+> 実務では「**読み込み中**」「**エラー**」「**空**」の3つを書き忘れないことが、品質の差になります。
+
+</Step>
+
+<Step title="Step 9：完了済みをまとめて削除する">
+
+最後に、終わった Todo をリストから消すボタンを足します。
+
+```ts
+function clearDone() {
+	todos = todos.filter((t) => !t.done);
+}
+```
+
+```svelte
+<button type="button" onclick={clearDone}>完了済みを削除</button>
+```
+
+### これは何をしているか
+
+- `todos.filter((t) => !t.done)` … **終わってないものだけ残す**
+- `todos = ...` … その新しいリストを **`todos` に入れ直す**
+- 画面の Todo 表示は、`todos` を見ているので**自動で変わる**
+
+「**残ってほしいものだけ集める**」のがフィルターのコツです。
+
+</Step>
+
+</Steps>
+
+## 完成コード
+
+完成形は、いちばん上の **完成プレビュー** のタブで読めます（コピーもできます）。
+ここではダイジェスト版だけ載せます。9ステップのコードが、ぜんぶこの中に入っています。
+
+```svelte
+<script lang="ts">
+	type Todo = { id: number; text: string; done: boolean };
+
+	let todos = $state<Todo[]>([]);
+	let newTodo = $state('');
+
+	const remaining = $derived(todos.filter((t) => !t.done).length);
+
+	function addTodo() {
+		const text = newTodo.trim();
+		if (text === '') return;
+		todos.push({ id: Date.now(), text, done: false });
+		newTodo = '';
+	}
+
+	function clearDone() {
+		todos = todos.filter((t) => !t.done);
+	}
+</script>
+
+<form onsubmit={(e) => { e.preventDefault(); addTodo(); }}>
+	<input type="text" bind:value={newTodo} placeholder="やることを書く" />
+	<button type="submit">追加</button>
+</form>
+
+{#if todos.length === 0}
+	<p>やることはまだありません 🎉</p>
+{:else}
+	<ul>
+		{#each todos as todo (todo.id)}
+			<li class:done={todo.done}>
+				<label>
+					<input type="checkbox" bind:checked={todo.done} />
+					<span>{todo.text}</span>
+				</label>
+			</li>
+		{/each}
+	</ul>
+	<p>残り {remaining} 件</p>
+	<button onclick={clearDone}>完了済みを削除</button>
+{/if}
+```
+
+CSS は省略しています。完全版は **完成プレビューのタブ** から見られます。
+
+## 実務では何につながる？
+
+Todoアプリは小さく見えますが、ここで覚えた形は **実務のいろんな画面で同じ**です。
+
+- **お知らせ一覧** … `{#each notices as n (n.id)}` で並べる
+- **チェックリスト・点検表** … 各行の完了状態を `bind:checked` で持つ
+- **タスク管理** … `$state` のリスト + `$derived` の集計（残り件数 / 完了率）
+- **管理画面の一覧操作** … 「選択中のものをまとめて削除」は `filter` の応用
+- **検索フォーム** … `bind:value` + `$derived` で「合うものだけ表示」
+- **入力バリデーション** … 「**早く return する**」パターンはそのまま使える
+- **設定画面** … トグルやチェックを `bind:checked` で1つずつ繋ぐ
+
+> ちなみに、「**ブラウザを閉じても残るTodo**」にしたいなら、[$effect](/docs/svelte/effect) で `localStorage` に保存できます。
+> 「**サーバーに保存する本格版**」にしたいなら、[form actions](/docs/sveltekit/form-actions) を使って、ローカル state を `+page.server.ts` に置きかえる流れになります。
+
+## 今日のまとめ
+
+- Todo アプリで使った道具は、**今までの章でぜんぶ出てきたもの**
+- リスト → `$state` + `{#each}`
+- 入力欄 → `bind:value`
+- 完了切り替え → `bind:checked` + `class:done`
+- 残り件数 → `$derived`
+- 0件メッセージ → `{#if}`
+- 削除 → `filter` + 代入
+- 1つの小さなアプリで、**Svelte の心臓部**をひと通り経験できる
+
+## 今はここだけでOK
+
+「**配列を `$state` に持って、`{#each}` で並べて、`bind` で操作する**」
+この3つの形を体に馴染ませれば、たいていの一覧UIは作れます。
+それ以上は、必要になったときに 1 つずつ覚えれば大丈夫です。
+
+## 次に作る小さな練習
+
+- 「**未完了だけ表示**」「**完了だけ表示**」「**ぜんぶ表示**」を切り替えるフィルターを足す（`$state` でモード、`$derived` で表示用リスト）
+- ブラウザを閉じても残るように、[$effect](/docs/svelte/effect) で `localStorage` に保存
+- 編集ボタンを足して、Todo の文字を後から変えられるようにする
+- ドラッグ＆ドロップで並び替え（少しレベル↑、SvelteKit 公式チュートリアル相当の応用）
+- [form actions](/docs/sveltekit/form-actions) を使って、サーバーに保存する本格版に作り変える

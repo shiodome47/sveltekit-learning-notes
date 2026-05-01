@@ -1,0 +1,123 @@
+---
+title: +layout.svelte は「共通の額縁」
+name: +layout.svelte：共通レイアウト
+description: +layout.svelte は、すべてのページに共通して出る「額縁」。ヘッダー・フッター・ナビなど、毎ページ書きたくないものをまとめて置く場所です。
+category: SvelteKit 実践基本
+order: 15
+---
+
+`+layout.svelte` は、ひとことで言うと
+
+> **「全ページに共通する額縁（がくぶち）」**
+
+です。
+
+## たとえ話：写真の額縁
+
+絵や写真を額に入れて壁に飾るとき、額のデザインは**どの絵でも同じ**ですよね。
+中身（絵）だけが違って、外側の枠は使い回します。
+
+`+layout.svelte` は、まさにこの「**額縁**」です。
+ヘッダー・フッター・ナビなど、**どのページでも同じもの**をまとめて書く場所です。
+
+## いちばん小さな例
+
+```bash
+src/routes/
+├─ +layout.svelte       ← 全ページ共通の額縁
+├─ +page.svelte         ← / の中身
+└─ about/
+   └─ +page.svelte      ← /about の中身
+```
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script lang="ts">
+	let { children } = $props();
+</script>
+
+<header>
+	<a href="/">ホーム</a>
+	<a href="/about">About</a>
+</header>
+
+<main>
+	{@render children()}
+</main>
+
+<footer>
+	<small>© My Notes</small>
+</footer>
+```
+
+### これは何をしているか
+
+- `let { children } = $props()` … 「**中に表示する絵**を受け取る」
+- `{@render children()}` … 「ここに**ページ本体**をはめ込む」
+- `<header>` と `<footer>` … **どのページでも出る**部分
+
+`/` を見ても `/about` を見ても、**ヘッダーとフッターは同じ**になります。
+それぞれの `+page.svelte` は「絵」だけ書けばOKで、額縁を毎回書かずに済みます。
+
+## children って？
+
+「`children`」というのは、**「この額縁の中に入る絵」**のことです。
+
+- 親（layout） = 額縁
+- 子（page） = 中の絵
+
+`{@render children()}` と書いた場所に、**そのときのページ本体**が描画されます。
+
+## フォルダごとに別の額縁も作れる
+
+`+layout.svelte` は、**フォルダごと**に置けます。
+
+```bash
+src/routes/
+├─ +layout.svelte             ← サイト全体の額縁
+└─ admin/
+   ├─ +layout.svelte          ← /admin/ 配下にだけ追加で乗る額縁
+   ├─ +page.svelte
+   └─ users/
+      └─ +page.svelte
+```
+
+`/admin/...` のページは、**サイト全体の額縁** + **admin 用の額縁**が**重なって**表示されます。
+入れ子の額縁、というイメージです。
+
+## 実務でよく使う場面
+
+`+layout.svelte` は、こういう「**毎ページ書きたくないもの**」を置きます。
+
+- **共通ヘッダー／フッター** … サイトロゴ、コピーライト
+- **共通ナビ** … `<a href="/">ホーム</a>` などのメニュー
+- **管理画面のサイドバー** … `/admin/` 配下だけに乗せる
+- **会員ページの「ログイン状態の表示」** … `/account/` 配下だけに乗せる
+- **Docs サイトの目次・パンくず** … ドキュメント全ページ共通の枠
+
+> このサイト自体（左サイドバー＋本文＋目次の3カラム）も、`+layout.svelte` で作られています。
+
+## ちょっとしたコツ
+
+- 共通**データ**を全ページに渡したいなら、`+layout.server.ts` の `load` で取得 → 各ページで `data` として受け取る
+- 「`/admin/` のときだけログインチェック」みたいな**門番**は、その階層の `+layout.server.ts` で `redirect` を投げる
+
+（くわしくは `load` のページや、これから書く `hooks` のページで！）
+
+## 今日のまとめ
+
+- `+layout.svelte` は「**全ページに共通の額縁**」
+- 中身は `let { children } = $props()` と `{@render children()}` で受け取る
+- フォルダごとに置ける（**入れ子の額縁**になる）
+- 実務では、ヘッダー / フッター / 管理画面サイドバー / 共通データ取得に使う
+
+## 今はここだけでOK
+
+「**毎ページ同じものを書きたくない**」と思ったら `+layout.svelte` を作る。
+中に `{@render children()}` を 1 行入れるだけでスタートできます。
+
+## 次に作る小さな練習
+
+- `src/routes/+layout.svelte` を作って、`<header>ホーム</header>` を全ページに表示する
+- `/about` を作って、`+layout.svelte` のヘッダーが出ているか見てみる
+- `src/routes/admin/+layout.svelte` を作って、`/admin/...` だけ別のサイドバーを出してみる

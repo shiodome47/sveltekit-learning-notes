@@ -4,39 +4,38 @@
  */
 export const siteConfig = {
 	/** Primary site name used in titles and Open Graph site fields. */
-	name: 'Motion Core Documentation Template',
+	name: 'Svelte & TypeScript Learning Notes',
 	/** Compact site name for environments with strict length limits. */
-	shortName: 'Motion Core Documentation Template',
+	shortName: 'Svelte & TS Notes',
 	/** Public canonical URL used to build absolute links. */
-	url: 'https://motion-gpu.dev',
+	url: 'http://localhost:5173',
 	/** Default SEO description for the homepage and fallback metadata. */
 	description:
-		'A reusable documentation template for modern TypeScript projects. Launch branded docs fast with configurable navigation, SEO metadata, and content structure.',
+		'小学生にもわかるくらい、SvelteとTypeScriptをやさしく学ぶノート。$state、+page.svelte、load、form actions、TypeScriptの「型」を、たとえ話と短いコードで説明します。',
 	/** Author shown in metadata and structured data. */
-	author: 'Marek Jóźwiak',
+	author: 'Me',
 	/** Primary SEO keywords for indexing and discovery. */
 	keywords: [
-		'documentation',
-		'docs template',
-		'static docs',
-		'typescript',
+		'svelte',
 		'sveltekit',
-		'seo',
-		'developer docs',
-		'knowledge base',
-		'template',
-		'motion core documentation template'
+		'typescript',
+		'初心者',
+		'入門',
+		'学習ノート',
+		'やさしい',
+		'チュートリアル',
+		'web開発'
 	],
 	/** Default social preview image path. */
 	ogImage: '/og-image.jpg',
 	/** External profile links used by docs actions and metadata. */
 	links: {
-		github: 'https://example.com/',
+		github: 'https://github.com/',
 		twitter: 'https://example.com/'
 	},
 	/** Package metadata used in installation snippets and docs helpers. */
 	package: {
-		name: '@motion-core/example'
+		name: 'svelte'
 	}
 };
 

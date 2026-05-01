@@ -1,0 +1,274 @@
+---
+title: TodoをlocalStorageに保存しよう
+name: Todo localStorage版
+description: ブラウザを閉じても残るTodoアプリ。$effect と localStorage の組み合わせ、SSR対策の typeof window までを実例で学びます。
+category: 小さなアプリ例
+order: 20
+---
+
+<script lang="ts">
+	import { ComponentPreview, Step, Steps } from '$lib';
+	import TodoLocalStorageApp from './_TodoLocalStorageApp.svelte';
+	import todoSource from './_TodoLocalStorageApp.svelte?raw';
+</script>
+
+## ひとことで言うと
+
+`localStorage` を使うと、**ブラウザを閉じても Todo が残ります**。
+[前回の Todo アプリ](/docs/examples/todo) はリロードすると消えてしまいましたが、今回は **ずっと残る版**にします。
+主役は [$effect](/docs/svelte/effect) です。
+
+## 今回学ぶこと
+
+- **`localStorage` とは何か**（ブラウザの小さなメモ帳）
+- なぜ普通の [$state](/docs/svelte/state) だけだと、リロードで消えてしまうのか
+- [$effect](/docs/svelte/effect) で「**変化を見張って保存する**」やり方
+- **SSR 対策**で `typeof window` を使う理由
+- 実務では「**下書き保存・設定保存・検索条件の記憶**」など、毎日のように使う
+
+## 完成プレビュー
+
+下のプレビューで実際に試せます。Todo を追加して、**ページをリロードしてみてください**。
+**消えずに残ります。** これが今日のゴールです。
+
+<ComponentPreview
+	sources={[
+		{ name: '_TodoLocalStorageApp.svelte', code: todoSource, language: 'svelte' }
+	]}
+>
+	<TodoLocalStorageApp />
+</ComponentPreview>
+
+> 保存先は **ブラウザの開発者ツール → Application → Local Storage** で見られます（キー名 `svelte-notes-todos-v1`）。中身は JSON の文字列です。
+
+ここからは、このコードを **5ステップ**に分けて理解していきます。
+
+<Steps>
+
+<Step title="Step 1：localStorage は「ブラウザの小さなメモ帳」">
+
+`localStorage` は、**ブラウザの中にある小さなメモ帳**です。
+ブラウザを閉じても、明日また開いても、**書いたことが残っています**。
+
+| たとえ | 中身 |
+| --- | --- |
+| **ノート** | 文字を書いたり消したりできる |
+| **キーと値** | 「**名前**：たろう」みたいに **名札つき**で1つずつ保存 |
+| **ブラウザごとに別** | Chrome のメモ帳と Safari のメモ帳は別物 |
+| **同じサイトの中だけ** | 他のサイトからは見えない |
+
+使う命令はたった3つだけ覚えればOKです。
+
+```ts
+localStorage.setItem('名前', '中身');     // 書く
+const value = localStorage.getItem('名前'); // 読む（なければ null）
+localStorage.removeItem('名前');           // 消す
+```
+
+### これは何をしているか
+
+- `setItem` … メモ帳に**書きこむ**
+- `getItem` … メモ帳から**読み出す**（無いときは `null`）
+- `removeItem` … その項目を**消す**
+
+ポイントは、**保存できるのは文字（string）だけ**ということ。
+配列やオブジェクトを保存したいときは、いったん**JSON という文字に変換**します。
+
+```ts
+const todos = [{ id: 1, text: 'お風呂', done: false }];
+localStorage.setItem('todos', JSON.stringify(todos)); // 文字に変えて保存
+```
+
+### これは何をしているか
+
+- `JSON.stringify(...)` … 「配列やオブジェクト → **文字（JSON）**」に変換
+- 反対の戻し方は `JSON.parse(...)`（文字 → オブジェクト）
+
+</Step>
+
+<Step title="Step 2：最初に保存済み Todo を読む">
+
+ページを開いたときに、**前回保存した Todo を読みこむ**関数を作ります。
+
+```ts
+function loadInitial(): Todo[] {
+	if (typeof window === 'undefined') return [];
+	try {
+		const raw = localStorage.getItem('svelte-notes-todos-v1');
+		return raw ? (JSON.parse(raw) as Todo[]) : [];
+	} catch {
+		return [];
+	}
+}
+```
+
+### これは何をしているか
+
+- `typeof window === 'undefined'` … 「ブラウザでない（＝サーバー）」なら `[]` を返す（くわしくは Step 5）
+- `localStorage.getItem(...)` … メモ帳から文字を読む
+- `raw ? JSON.parse(raw) : []` … 文字があれば**配列に戻す**、無ければ空のリスト
+- `try / catch` … メモ帳の中身が壊れていても**画面が落ちない**ように
+
+> `try / catch` は **「失敗してもアプリを止めない安全ネット」** です。実務では必ず付けておくと安心です。
+
+`as Todo[]` は TypeScript に「**この読み出した値は Todo の配列**」と教える [型の名札](/docs/typescript/types) です。
+
+</Step>
+
+<Step title="Step 3：$state に読みこんだ Todo を入れる">
+
+[前回の Todo](/docs/examples/todo) では空の配列で始めましたが、今回は **読みこんだものを最初の中身**にします。
+
+```ts
+let todos = $state<Todo[]>(loadInitial());
+let newTodo = $state('');
+```
+
+### これは何をしているか
+
+- `loadInitial()` の**返り値**を、いきなり `$state` に入れる
+- 前回保存があれば、**最初からその一覧で表示される**
+- 何もなければ空の `[]` で始まる
+- それ以降は前回と同じ：`$state` の中を変えれば画面も自動で書き換わる
+
+「**普通のTodoアプリ**」と違うのは、ここの**最初の1行だけ**です。あとは同じ。
+
+> 「最初の値」だけ工夫して、残りは普通に書くと、**localStorage 対応はあとから足せる**ことが多いです。
+
+</Step>
+
+<Step title="Step 4：$effect で Todo の変化を保存する">
+
+[$effect](/docs/svelte/effect) は「**変化を見張る係**」でしたね。
+今回は、**`todos` が変わるたびに `localStorage` に書きこむ**ように見張らせます。
+
+```ts
+$effect(() => {
+	if (typeof window === 'undefined') return;
+	localStorage.setItem('svelte-notes-todos-v1', JSON.stringify(todos));
+});
+```
+
+### これは何をしているか
+
+- `$effect(() => { ... })` … 「中で読んだ `$state` が変わるたびに、これを動かす」
+- `JSON.stringify(todos)` … `todos` を**文字に変換**してから保存
+- `JSON.stringify` の中で `todos` を**読んでいる**ので、Svelte が「あ、`todos` を見張るやつだな」と覚えてくれる
+- → **追加 / チェック切り替え / 削除のどれでも**、そのつど自動で保存される
+
+つまり、自分で「いつ保存しようかな…」と考える必要がなく、**変えたら勝手に保存**されます。
+
+> 「**画面に出すこと**（→ `{#each}` ）」「**自動で計算すること**（→ `$derived` ）」「**保存すること**（→ `$effect` ）」は、Svelte の3つの定番役わりです。
+
+</Step>
+
+<Step title="Step 5：typeof window で SSR 対策する">
+
+SvelteKit は、**最初の HTML をサーバーで作ってから**ブラウザに送ります（これを **SSR** と言います）。
+
+問題は、**サーバーには `localStorage` が無い**ということです。
+
+| 場所 | `localStorage` | `window` |
+| --- | --- | --- |
+| **ブラウザ** | ある | ある |
+| **サーバー** | **ない** | **ない** |
+
+そのまま `localStorage.getItem(...)` を書くと、サーバーで動いたときに **「`localStorage` is not defined」** というエラーになります。
+これを防ぐのが、`typeof window` の合言葉です。
+
+```ts
+if (typeof window === 'undefined') return;
+// この下に来るのは、ブラウザのときだけ
+localStorage.setItem(...);
+```
+
+### これは何をしているか
+
+- `typeof window === 'undefined'` … 「いま `window` という箱が**ない**」＝**サーバーにいる**
+- `return` … サーバーのときは**何もせず帰る**
+- これより下は、**ブラウザにいるときだけ**動く
+
+> 合言葉：「**`window` がないなら、ここはサーバー。だから何もしない。**」
+
+`$effect` は元々ブラウザでしか動きませんが、[$state](/docs/svelte/state) の初期化（Step 2 の `loadInitial`）はサーバーでも呼ばれます。**そこで `typeof window` が大活躍**します。
+
+</Step>
+
+</Steps>
+
+## 完成コード
+
+完全版は **完成プレビュー** のタブで読めます（コピーボタンも使えます）。
+ここでは中心となる仕組みだけ、ぎゅっとまとめておきます。
+
+```svelte
+<script lang="ts">
+	type Todo = { id: number; text: string; done: boolean };
+
+	const STORAGE_KEY = 'svelte-notes-todos-v1';
+
+	function loadInitial(): Todo[] {
+		if (typeof window === 'undefined') return [];
+		try {
+			const raw = localStorage.getItem(STORAGE_KEY);
+			return raw ? (JSON.parse(raw) as Todo[]) : [];
+		} catch {
+			return [];
+		}
+	}
+
+	let todos = $state<Todo[]>(loadInitial());
+	let newTodo = $state('');
+	const remaining = $derived(todos.filter((t) => !t.done).length);
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+	});
+</script>
+```
+
+UI 部分は [前回の Todo アプリ](/docs/examples/todo) とほぼ同じです。
+変えたのは **「最初の1行（読みこみ）」**と **「`$effect` の3行（保存）」**だけ。これで**永続化**が完成です。
+
+## 実務では何につながる？
+
+`$effect` + `localStorage` の組み合わせは、**実務でとても便利**です。
+
+- **入力途中の下書き保存** … 投稿フォーム、お問い合わせ画面（書きかけが消えると悲しい）
+- **ダークモード設定** … 次回もユーザー好みの色で開ける
+- **検索条件の保存** … よく使うフィルターを覚えておく
+- **チェックリストの保存** … 点検表、買い物リスト、勉強メモ
+- **小さな個人用ツール** … 家計メモ、献立メモ、読書ログ
+- **「ログイン無し」のメモアプリ** … サーバー無しでも、それっぽく動く
+
+> 「**サーバー保存ほどではないけど、毎回入力したくない**」ものに、`localStorage` はぴったりです。
+
+> もっと本格的な保存（複数端末・他の人と共有）にしたいときは、[form actions](/docs/sveltekit/form-actions) と組み合わせてサーバーに保存する流れになります。
+
+## 今日のまとめ
+
+- `localStorage` は **ブラウザの小さなメモ帳**（**文字だけ**保存できる）
+- 配列やオブジェクトは **`JSON.stringify` / `JSON.parse`** で行き来する
+- 最初の値は [$state](/docs/svelte/state) の初期化で読みこむ
+- 変化があるたびの保存は [$effect](/docs/svelte/effect) に見張らせる
+- **`typeof window === 'undefined'`** で SSR を安全に通り抜ける
+- 変えたのは「**最初の1行**」と「**`$effect` の3行**」だけ
+
+## 今はここだけでOK
+
+「**ブラウザを閉じても残したい値**」が出てきたら、
+
+1. 読みこみ用の `loadInitial()` を作って、`$state` の初期値に渡す
+2. `$effect` の中で `localStorage.setItem(...)` する
+3. 両方に **`typeof window` ガード**を入れる
+
+この3点セットで、ほとんどの永続化が書けます。
+
+## 次に作る小さな練習
+
+- 上の Todo を実際にいじって、**リロード**しても残るか試してみる
+- ブラウザの開発者ツール → Application → Local Storage で **JSON が増えていく**様子を眺めてみる
+- 自分のサイトに「**ダークモード**」のトグルを作り、`$effect` で `localStorage` に保存して、リロードしても色が戻らないようにする
+- [前回の Todo アプリ](/docs/examples/todo) と[今日のコード](/docs/examples/todo-localstorage)を **横に並べて diff してみる**（変わったのは本当に4行だけ）
+- 余裕があれば、**保存キーにバージョン番号**（`-v1`）を付けるクセをつける（中身の形が変わったときに古いデータをスキップしやすい）

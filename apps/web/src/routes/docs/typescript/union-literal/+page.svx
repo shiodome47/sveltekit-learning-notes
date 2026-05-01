@@ -1,0 +1,178 @@
+---
+title: Union と Literal は「選べる値を決める」
+name: Union / Literal
+description: theme = 'light' / 'dark'、status = 'loading' / 'error' / 'success'、role = 'admin' / 'member' など、SvelteKit 実務の状態管理・権限管理に欠かせない Union 型と Literal 型を、たとえ話で覚えます。
+category: TypeScript 実践基本
+order: 30
+---
+
+## ひとことで言うと
+
+> **Literal 型** … 「**この値だけOK**」（`'admin'` のような**値そのものが型**）
+> **Union 型** … 「**いくつかの候補から1つだけ選ぶ**」（`'a' | 'b' | 'c'` の `|` で繋ぐ）
+
+の2つを組み合わせると、**状態や権限**をきれいに型で表現できます。
+
+## たとえ話：選択肢が決まったメニュー
+
+| たとえ | 候補 |
+| --- | --- |
+| **学校給食の今日のメイン** | カレー / ハンバーグ / やきそば |
+| **信号の色** | 赤 / 黄 / 緑 |
+| **ユーザーの役割** | 管理者 / 一般会員 |
+
+「**この中のどれか**」と決めておくと、`'むらさき'` のような変な値が入ったらすぐ気づけます。
+TypeScript ではこれを **`|`** で書きます。
+
+## Literal 型は「この値だけ」
+
+```ts
+type Yes = 'yes';
+
+let answer: Yes = 'yes'; // OK
+let answer2: Yes = 'no'; // ❌ エラー
+```
+
+### これは何をしているか
+
+- `'yes'` という**文字そのものが型**になっている
+- `'yes'` 以外は入れられない
+
+たった1つの値しか取れないので、これだけだと使い道は少ない。
+**Union と組み合わせて初めて活躍**します。
+
+## Union 型は「どれか1つ」
+
+`|`（縦棒）で**つなぐ**だけです。
+
+```ts
+type Theme = 'light' | 'dark';
+
+let theme: Theme = 'light'; // OK
+let theme2: Theme = 'dark'; // OK
+let theme3: Theme = 'blue'; // ❌ エラー
+```
+
+### これは何をしているか
+
+- `'light' | 'dark'` … 「**`light` か `dark` のどちらか**」
+- 他の値を入れると TypeScript が止めてくれる
+- **書き間違いが起きない**のがうれしい
+
+## SvelteKit 実務でよく使う Union
+
+このサイトの実例から、3つピックアップ。
+
+### 1. ダークモードのテーマ
+
+[ダークモード](/docs/patterns/dark-mode) で実演しました。
+
+```ts
+type Theme = 'light' | 'dark';
+
+let theme = $state<Theme>('light');
+```
+
+### 2. 4状態UIの状態
+
+[loading / error：4状態UI](/docs/patterns/loading-error) で実演しました。
+
+```ts
+type State =
+	| { status: 'loading' }
+	| { status: 'error'; message: string }
+	| { status: 'empty' }
+	| { status: 'success'; items: Item[] };
+```
+
+> 「**状態と、そのときに必要なデータを、一緒にまとめる**」やり方を **discriminated union（区別できる union）** と呼びます。
+> 名前は難しいですが、考え方は「**`status` で分岐したら、そのときに必要なデータが揃っている**」だけ。
+
+### 3. 管理画面の役割
+
+[お知らせ管理画面](/docs/examples/admin-board) で実演しました。
+
+```ts
+type Role = 'admin' | 'member';
+
+if (locals.user.role !== 'admin') {
+	error(403, '管理者だけが見られます');
+}
+```
+
+## Union と `{#if}` の相性
+
+Union 型は [`{#if}`](/docs/svelte/if) と組み合わせると、TypeScript が**「ここでは `success` 型になる」**と賢く判断してくれます。
+
+```svelte
+{#if state.status === 'loading'}
+	<p>読み込み中</p>
+{:else if state.status === 'error'}
+	<p>{state.message}</p>
+{:else}
+	<ul>
+		{#each state.items as item}
+			<li>{item}</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `state.status === 'loading'` の中では、TypeScript が「**この `state` は loading の枝**」と判断
+- `error` の枝では `state.message` が**安全に**使える（`loading` には `message` が無いので、外で書くとエラー）
+- `success` の枝では `state.items` が**安全に**使える
+
+> Union ＋ `{#if}` の合わせ技は、**実務でいちばん気持ちいい型の力**のひとつです。
+
+## 数字の Literal も使える
+
+文字だけでなく、**数字の Literal** も使えます。
+
+```ts
+type DiceRoll = 1 | 2 | 3 | 4 | 5 | 6;
+type StatusCode = 200 | 404 | 500;
+```
+
+### これは何をしているか
+
+- `1 | 2 | ... | 6` … サイコロの目だけが入る
+- `200 | 404 | 500` … HTTPステータスコードの一部
+- 他の数字は入れられない
+
+実務では、**ステータスコードや決まった数字の選択肢**を表すのに便利です。
+
+## 既存型の整理
+
+サイドバーの実例ページで出てきた Union 型を一覧にすると：
+
+| 章 | 型 |
+| --- | --- |
+| [ダークモード](/docs/patterns/dark-mode) | `type Theme = 'light' / 'dark'` |
+| [4状態UI](/docs/patterns/loading-error) | `type State = ...4種類の status` |
+| [お知らせ管理画面](/docs/examples/admin-board) | `type Role = 'admin' / 'member'` |
+
+「**3つしかパターンがない**」ような場面はぜんぶ Union で書ける、と覚えておけばOK。
+
+## 今日のまとめ
+
+- **Literal 型** … `'admin'` のような**値そのものを型にする**
+- **Union 型** … `'a' | 'b' | 'c'` のように**候補をつなぐ**
+- 組み合わせると、**状態 / 役割 / テーマ**などがきれいに型で表せる
+- [`{#if}`](/docs/svelte/if) と組み合わせると、TypeScript が**型を絞りこんで**くれる
+- 文字だけでなく**数字**でも使える
+
+## 今はここだけでOK
+
+> **「いくつかの値からどれか1つ」を表すのが Union 型。`|` で繋ぐ。**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- 自分のサイトの**お知らせのカテゴリ**を、`type Category = '行事' | '防災' | '会議' | '連絡'` で作ってみる
+- [ダークモード](/docs/patterns/dark-mode) の `Theme` を、`'light' | 'dark' | 'auto'` の3つに広げてみる
+- [4状態UI](/docs/patterns/loading-error) の `State` 型を、自分の言葉で書きなおしてみる
+- [お知らせ管理画面](/docs/examples/admin-board) の `Role` を、`'admin' | 'editor' | 'viewer'` の3段階に拡張してみる
+- 数字 Literal で、サイコロの目の型 `type DiceRoll = 1 | 2 | 3 | 4 | 5 | 6` を作って、ボタンで振るアプリを作ってみる

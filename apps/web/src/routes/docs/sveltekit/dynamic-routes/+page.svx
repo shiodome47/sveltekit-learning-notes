@@ -1,0 +1,133 @@
+---
+title: "[slug] は「URLの中の名前を受け取る箱」"
+name: "[slug]：動的ルート"
+description: "[slug] は、URLの一部を受け取る箱。お知らせ詳細やブログ詳細など、「同じ作りで中身が違うページ」を1テンプレで作れます。"
+category: SvelteKit 実践基本
+order: 17
+---
+
+`[slug]` は、ひとことで言うと
+
+> **「URLの一部を、変数として受け取る箱」**
+
+です。
+
+## たとえ話：受付の「お名前ボード」
+
+役所の窓口に「**ここにお名前をどうぞ**」と書かれた**白いボード**があるとします。
+お客さんが「**やまだ**」と書けば「やまださん用の対応」、
+「**たなか**」と書けば「たなかさん用の対応」をしてくれます。
+
+`[slug]` はその「**お名前ボード**」です。
+URL の一部を**変数**として受け取り、ページ側で「誰用の表示か」を切り替えられます。
+
+## いちばん小さな例：/blog/任意の名前
+
+```bash
+src/routes/blog/[slug]/
+└─ +page.svelte
+```
+
+```svelte
+<!-- src/routes/blog/[slug]/+page.svelte -->
+<script lang="ts">
+	import { page } from '$app/state';
+</script>
+
+<h1>{page.params.slug} の記事</h1>
+```
+
+### これは何をしているか
+
+- フォルダ名 `[slug]` … 「ここに**何が入ってもOK**な箱」
+- `page.params.slug` … その箱に入った文字を取り出す
+- `<h1>{page.params.slug} の記事</h1>` … 取り出した文字を画面に出す
+
+URL を `/blog/hello` にすれば「**hello の記事**」、
+`/blog/sushi` にすれば「**sushi の記事**」が表示されます。
+
+> ファイルは **1つだけ**。それで**何種類のURLにも対応**できるのが [slug] のすごいところです。
+
+## load と組み合わせると本領発揮
+
+`[slug]` は、`load` と組み合わせて**中身を出し分ける**のが定番です。
+
+```bash
+src/routes/blog/[slug]/
+├─ +page.server.ts
+└─ +page.svelte
+```
+
+```ts
+// +page.server.ts
+const articles: Record<string, { title: string; body: string }> = {
+	hello: { title: 'はじめてのブログ', body: 'よろしくお願いします' },
+	sushi: { title: 'おすしの話', body: 'まぐろが好きです' }
+};
+
+export function load({ params }) {
+	const article = articles[params.slug];
+	if (!article) {
+		return { article: null };
+	}
+	return { article };
+}
+```
+
+```svelte
+<!-- +page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+{#if data.article}
+	<h1>{data.article.title}</h1>
+	<p>{data.article.body}</p>
+{:else}
+	<p>記事が見つかりません</p>
+{/if}
+```
+
+### これは何をしているか
+
+- `params.slug` … URL の `[slug]` 部分を `load` でも受け取れる
+- `articles[params.slug]` … その名前にあった記事を取ってくる
+- `+page.svelte` … 取れた中身を表示するだけ
+
+`/blog/hello` と `/blog/sushi` は**同じテンプレ**ですが、
+表示される内容は**それぞれ違う**ものになります。
+
+## 実務でよく使う場面
+
+`[slug]` は、こういう「**同じ作りで中身がちがうページ**」のときに必須です。
+
+- **お知らせ詳細** … `/news/[id]` で `id` ごとに記事を切り替える
+- **ブログ詳細** … `/blog/[slug]` で記事ごとの本文を出す
+- **商品ページ** … `/products/[sku]` で商品ごとの値段や説明
+- **ユーザーページ** … `/u/[name]` で各ユーザーのプロフィール
+- **タグ別ページ** … `/tag/[name]` でそのタグの記事一覧
+
+> 一覧ページから詳細ページへリンクを貼るときの**定番パターン**です。
+
+## ちょっと知っておくと便利
+
+- 複数の箱をつなげられる：`/[year]/[month]/[slug]` → `params.year`, `params.month`, `params.slug`
+- 「すべてキャッチ」もある：`[...rest]` → 残りのパス全部を受け取る（くわしくはまた別ページで）
+
+## 今日のまとめ
+
+- `[slug]` は「**URLの一部を受け取る箱**」
+- `page.params.slug` で取り出せる（`load` の中なら `params.slug`）
+- `load` と組み合わせると、**1つのテンプレで何種類でもページを作れる**
+- 実務では、お知らせ詳細・ブログ詳細・商品ページの王道パターン
+
+## 今はここだけでOK
+
+URL に「変わる部分」を作りたくなったら、フォルダを **`[名前]`** で作る。
+取り出すには **`page.params.名前`**（または `load` の `params.名前`）。
+
+## 次に作る小さな練習
+
+- `/blog/[slug]/+page.svelte` を作って、`page.params.slug` をそのまま表示する
+- `+page.server.ts` を足して、いくつかの記事を `slug` で出し分ける
+- 一覧ページ `/blog/+page.svelte` を作って、`<a href="/blog/hello">` のようにリンクを貼る

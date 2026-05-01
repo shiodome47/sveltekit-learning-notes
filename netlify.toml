@@ -1,0 +1,15 @@
+# Netlify build configuration for the monorepo.
+# The SvelteKit app lives at apps/web/. We tell Netlify to cd there
+# (base = "apps/web") so adapter-netlify's auto-detected output
+# (apps/web/build + apps/web/.netlify/functions-internal) is found.
+
+[build]
+  base = "apps/web"
+  command = "bun run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# adapter-netlify emits Functions v2 into .netlify/functions-internal/
+# which Netlify auto-detects relative to the base directory.

@@ -1,0 +1,314 @@
+---
+title: loading / error / empty / data の4状態UI
+name: loading / error：4状態UI
+description: データを表示する画面では、必ず4つの状態（読み込み中・失敗・空・データあり）を分けて考える。実務でいちばん使う {#if} のパターンを、Svelte と SvelteKit の文脈で整理します。
+category: 実務パターン集
+order: 5
+---
+
+データを表示する画面のお約束を、ひとことで言うと
+
+> **「読み込み中・失敗・空・データあり、の4つを分けて考える」**
+
+です。
+
+## たとえ話：レストランで料理を待つ
+
+レストランで料理を注文したとき、テーブルではいろんな**状態**を経ますよね。
+
+| お店の状態 | 画面の状態 | 表示 |
+| --- | --- | --- |
+| **料理を作っているところ** | `loading` | 「読み込み中…」 |
+| **注文が厨房に届かなかった** | `error` | 「うまく取れませんでした」 |
+| **そもそも今日は料理がない** | `empty` | 「まだ何もありません」 |
+| **料理が運ばれてきた** | `data` | 一覧やカード |
+
+店員さんがいきなり料理を出してくれたら最高ですが、現実はそう簡単じゃありません。
+**ちゃんと4つの状態を分けて考えると、画面が落ち着きます**。
+
+## なぜ4状態が必要なの？
+
+実務の画面では、データは**いきなりは出てきません**。
+
+- **API から取ってくる** … 通信が**遅い**ことも、**失敗する**こともある
+- **DB から取ってくる** … 件数が **0 件** ということもある
+- **検索結果** … 検索ワードに**何も合わない**こともある
+- **お知らせ一覧** … まだ1件も投稿されていない時期もある
+
+「データが**ある**前提」で書いてしまうと、**真っ白な画面**や**意味のないエラー**が出やすくなります。
+そこで、最初から **「4つの状態を出し分ける**」型を覚えておくと安心です。
+
+## まず、悪い例
+
+「データはどうせあるでしょ」と思って書きがちな例を見ます。
+
+```svelte
+<script lang="ts">
+	let items = $state<{ title: string }[]>([]);
+	// 取ってきたつもり…
+</script>
+
+<h2>{items[0].title}</h2>
+<ul>
+	{#each items as item}
+		<li>{item.title}</li>
+	{/each}
+</ul>
+```
+
+### これは何をしているか
+
+- `items[0].title` … **0件のとき** `items[0]` は `undefined` → エラーで画面が真っ白
+- `{#each items as item}` … 0件なら何も出ないので、ユーザーは**「壊れた？」**と感じる
+- 通信が**失敗**したときも、何も伝わらない
+
+> 大事なのは、**「うまくいったとき」だけでなく「うまくいかなかったとき」「途中」「空」もちゃんと書く**ことです。
+
+## 基本の4状態：状態に「名札」を付ける
+
+TypeScript の機能を使って、**状態に名札**を付けます。
+
+```ts
+type Item = { id: number; title: string };
+
+type State =
+	| { status: 'loading' }
+	| { status: 'error'; message: string }
+	| { status: 'empty' }
+	| { status: 'success'; items: Item[] };
+```
+
+### これは何をしているか
+
+- `type State = ... | ... | ...` … 「**この4つのうちのどれか**」という名札
+- `status` … いまどの状態かを表す**ラベル**
+- `error` のときだけ `message` を持つ、`success` のときだけ `items` を持つ
+- 「**状態と、そのとき必要なデータをセットで決めた**」だけ
+
+> このまとめ方を **union（ユニオン）型** と言いますが、今は深追いしなくてOK。
+> **「状態の数だけ名札を並べた箱」**だと思ってください。
+
+そして、状態を `$state` に入れます。
+
+```svelte
+<script lang="ts">
+	let state = $state<State>({ status: 'loading' });
+</script>
+```
+
+最初は **「読み込み中」** から始めて、データが届いたら `success` に切り替えます。
+
+## Svelte での表示切り替え
+
+[`{#if}`](/docs/svelte/if) を使って、状態ごとに違う画面を出します。
+
+```svelte
+{#if state.status === 'loading'}
+	<p>読み込み中です…</p>
+{:else if state.status === 'error'}
+	<p class="error">{state.message}</p>
+{:else if state.status === 'empty'}
+	<p>まだデータがありません</p>
+{:else}
+	<ul>
+		{#each state.items as item (item.id)}
+			<li>{item.title}</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか（1行ずつ）
+
+- `state.status === 'loading'` … 「**いま読み込み中？**」 → 「読み込み中です…」を出す
+- `state.status === 'error'` … 「**失敗した？**」 → エラーメッセージを赤く出す
+- `state.status === 'empty'` … 「**0件？**」 → 案内文を出す
+- `{:else}` … ここまで来たら **`success`** なので、[`{#each}`](/docs/svelte/each) で一覧を並べる
+- `(item.id)` … 並び替えバグを防ぐ **key**
+
+ポイントは、**「データを使う場所」では絶対に `success` 状態しか来ない**ということ。
+TypeScript の名札のおかげで、`state.items` は `success` のときしか触れません。**安全**です。
+
+## 状態を切り替える小さな例
+
+「ボタンを押したら API から取ってくる」型の例です。
+
+```svelte
+<script lang="ts">
+	let state = $state<State>({ status: 'loading' });
+
+	async function reload() {
+		state = { status: 'loading' };
+		try {
+			const res = await fetch('/api/notices');
+			if (!res.ok) {
+				state = { status: 'error', message: 'うまく取れませんでした' };
+				return;
+			}
+			const items: Item[] = await res.json();
+			state = items.length === 0
+				? { status: 'empty' }
+				: { status: 'success', items };
+		} catch {
+			state = { status: 'error', message: '通信が失敗しました' };
+		}
+	}
+</script>
+
+<button onclick={reload}>更新</button>
+```
+
+### これは何をしているか
+
+- 最初に `loading` に戻す
+- `fetch` が **失敗（4xx/5xx）** なら `error` に切り替える
+- 取れたけど **0件** なら `empty` に
+- 1件以上なら `success` に
+- `try / catch` で **通信そのものの失敗**（オフラインなど）も拾う
+
+> 「**先に loading に戻す → 取りにいく → 結果に応じて切り替える**」
+> この流れは、検索・更新・再取得など**いろんな場面で同じ形**で使えます。
+
+## class / style と組み合わせる
+
+[class / style](/docs/svelte/class-style) と一緒に使うと、4状態UIが**ぐっと整います**。
+
+```svelte
+<div class:loading={state.status === 'loading'} class:error={state.status === 'error'}>
+	{#if state.status === 'loading'}
+		<p>読み込み中です…</p>
+	{:else if state.status === 'error'}
+		<p>{state.message}</p>
+	{:else if state.status === 'empty'}
+		<p>まだデータがありません</p>
+	{:else}
+		<ul>
+			{#each state.items as item (item.id)}
+				<li>{item.title}</li>
+			{/each}
+		</ul>
+	{/if}
+</div>
+
+<style>
+	.loading { opacity: 0.6; }
+	.error {
+		color: tomato;
+		border: 1px solid tomato;
+		padding: 0.5rem;
+		border-radius: 0.375rem;
+	}
+</style>
+```
+
+### これは何をしているか
+
+- `class:loading={...}` … 読み込み中だけ**全体を薄く**する
+- `class:error={...}` … エラーのとき**赤い枠**で囲む
+- 中身は同じ `{#if}` … でも**外側の見た目**まで状態に合わせて変わる
+
+> 「**状態（ロジック）と、見た目（class）が、同じ言葉で動く**」のがSvelteの気持ちいいところです。
+
+## SvelteKit の load との関係
+
+ここまで「クライアント側で状態を切り替える」話でした。
+[SvelteKit の `load`](/docs/sveltekit/load) を使うと、**ページ表示前にサーバーがデータを揃えて**から HTML を返してくれます。
+
+```ts
+// +page.server.ts
+export const load = async () => {
+	const items = await db.getNotices();
+	return { items };
+};
+```
+
+```svelte
+<!-- +page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+{#if data.items.length === 0}
+	<p>まだお知らせはありません</p>
+{:else}
+	<ul>
+		{#each data.items as item (item.id)}
+			<li>{item.title}</li>
+		{/each}
+	</ul>
+{/if}
+```
+
+### これは何をしているか
+
+- `load` が完了するまでブラウザに HTML が来ないので、**`loading` 状態は要らない**
+- `error` も `load` が `throw error(500, ...)` してくれるので、**専用の error UI に自動で飛ぶ**
+- 残るのは **`empty` と `success` の2状態だけ**でOK
+- 結果として `+page.svelte` がとてもシンプルになる
+
+> **`load` で先に揃える型** ＝ 2状態（empty / data）
+> **クライアント側 fetch / 検索 / 再取得** ＝ 4状態（loading / error / empty / data）
+
+「**サーバーで揃えるか、クライアントで取るか**」で、**書く UI の状態数**が変わります。
+両方の型を頭に入れておくと、画面ごとに使い分けられます。
+
+## 実務では何に使う？
+
+4状態UIは、データを表示するほぼ**すべての画面**に出てきます。
+
+- **お知らせ一覧** … 投稿0件のときの「お知らせはありません」も4状態UIの一部
+- **検索結果** … 「○○ に合うものは見つかりませんでした」
+- **管理画面の一覧** … ユーザー一覧 / 商品一覧 / 注文一覧
+- **会員申請一覧** … 新着・承認待ち・却下の各タブ
+- **API からデータを取る画面** … 外部の天気・地図・株価など
+- **ダッシュボード** … 各カードが loading → success と段々埋まる
+- **スマホアプリ風の画面** … リフレッシュ・ページング・検索・お気に入り
+
+> 「**何も見せないより、何かを見せる**」がユーザーへの優しさです。
+> 4状態UIは、その**いちばん簡単な道具**です。
+
+## Todo server版とのつながり
+
+[Todo server版](/docs/examples/todo-server) では、`fail(422, { error: '...' })` でバリデーションエラーをやさしく返しました。
+そこで返ってきた `form?.error` を画面に出していたのも、**「error 状態」の表示**そのものです。
+
+```svelte
+{#if form?.error}
+	<p class="error" role="alert">{form.error}</p>
+{/if}
+```
+
+サーバー側の [`form actions`](/docs/sveltekit/form-actions) と、クライアント側の `state.status === 'error'` は、
+**「ユーザーにやさしくエラーを伝える」**という同じ思想でつながっています。
+
+> 「**エラーを真っ白な画面で消さない**」ことが、実務の品質の差になります。
+
+[TypeScript の名札（型）](/docs/typescript/types) で `State` を union にしておくと、
+**「success のときしか `items` に触れない」**安全装置が自動で効きます。
+
+## 今日のまとめ
+
+- データ表示画面では **`loading` / `error` / `empty` / `success`** の4状態を分けて考える
+- TypeScript の **union 型**で「状態と必要なデータ」を1つの名札にまとめる
+- `[#if](/docs/svelte/if)` `[#each](/docs/svelte/each)` で**状態ごとに表示を切り替える**
+- [class / style](/docs/svelte/class-style) と組み合わせると見た目もきれいに揃う
+- [SvelteKit の `load`](/docs/sveltekit/load) を使うと、`loading` は不要になり**2状態でOK**になることが多い
+
+## 今はここだけでOK
+
+「**何かを取ってきて表示する画面**」を作るとき、
+
+1. 最初に `state = { status: 'loading' }` から始める
+2. 取れたら `success` か `empty` に切り替える
+3. 失敗したら `error` に切り替える
+4. `{#if}` で状態ごとの表示を書く
+
+この4ステップで、ほとんどのデータ表示画面が**実務で使えるレベル**になります。
+
+## 次に作る小さな練習
+
+- お知らせ一覧（適当な配列）を表示するページを作って、上の4状態をぜんぶ書いてみる
+- ボタンを押すと**わざと失敗させる**処理を入れて、`error` 状態の見た目を作りこむ
+- 検索欄を作り、入力に合うものが0件なら **`empty`** が出るようにする
+- 同じ画面を [`+page.server.ts`](/docs/sveltekit/load) の `load` 版で書きなおして、**2状態で済む**ことを実感する
+- [Todo server版](/docs/examples/todo-server) のフォームに、入力中の **`loading` 表示**（`use:enhance` の `submitting`）を足してみる

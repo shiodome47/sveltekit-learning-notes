@@ -1,0 +1,333 @@
+---
+title: hooks.server.ts は「入口の受付係」
+name: hooks：入口の受付係
+description: すべてのリクエストが最初に通る hooks.server.ts。Cookieを見て locals.user をセットし、認証や権限チェックの土台を作ります。error-redirect 章で出てきた locals.user の伏線を、ここで完全に回収します。
+category: SvelteKit 実践基本
+order: 50
+---
+
+`hooks.server.ts` は、ひとことで言うと
+
+> **「サイトに来たすべてのリクエストが、最初に通る入口」**
+
+です。
+ここで Cookie を読んだり、ログイン中ユーザーを調べたりして、**そのあとのページ全部で使える共通情報**を準備します。
+
+## たとえ話：建物の玄関の受付係
+
+Web サイトを**ビル**にたとえると、`hooks.server.ts` は**玄関の受付係**です。
+
+| 動き | コード |
+| --- | --- |
+| 「**あなたは誰ですか？**」と聞く | `event.cookies.get('session')` |
+| 受付メモに書く | `event.locals.user = ...` |
+| 中の部屋に通す | `await resolve(event)` |
+
+「**お名前は？ 会員ですか？ 管理者ですか？**」と確認してから中のページへ通す——これが受付係 = `hooks.server.ts` の役割です。
+
+各ページ（部屋）の側は、**受付メモ（`locals`）を見るだけ**で、いちいち Cookie を読まなくて済みます。
+
+## handle hook の基本形
+
+`hooks.server.ts` のいちばん小さな形はこれです。
+
+```ts
+// src/hooks.server.ts
+export async function handle({ event, resolve }) {
+	return await resolve(event);
+}
+```
+
+### これは何をしているか
+
+- ファイル名は **`src/hooks.server.ts`**（**ルートの直下**、`routes/` の中ではない）
+- `handle` という名前の関数を `export` する
+- `event` … いま来たリクエストの情報（URL・Cookie・headers など）
+- `resolve(event)` … 「**通常の SvelteKit 処理に進める**」ボタン
+- 何もしないなら、**そのまま `resolve` を返すだけ**でOK
+
+> 「`handle` を書かない」のもアリ。書いたとしても、**最低限 `resolve(event)` を返す**ことだけ守れば動きます。
+
+## event.locals とは？
+
+`locals` は **「受付係がメモを書いて、後ろの係に渡せる場所」** です。
+
+```ts
+// src/hooks.server.ts
+export async function handle({ event, resolve }) {
+	event.locals.message = 'hello';
+	return await resolve(event);
+}
+```
+
+```ts
+// src/routes/+page.server.ts
+export function load({ locals }) {
+	return {
+		message: locals.message
+	};
+}
+```
+
+### これは何をしているか
+
+- `hooks.server.ts` で **`event.locals.message` にメモを書く**
+- そのあとの `+page.server.ts` の `load` で **`locals.message` を読める**
+- ページに「`hello`」というデータが渡る
+
+> これが `locals` の本質です。**「受付で書いたメモを、各部屋で読める」**——たったそれだけ。
+> 実務では `message` ではなく **`user`**（ログイン中ユーザー）を入れることが圧倒的に多いです。
+
+## locals.user の基本イメージ
+
+ログイン中ユーザーを入れる、いちばんシンプルな例です。
+
+```ts
+// src/hooks.server.ts
+export async function handle({ event, resolve }) {
+	const session = event.cookies.get('session');
+
+	event.locals.user = session
+		? { name: 'Taro', role: 'admin' }
+		: null;
+
+	return await resolve(event);
+}
+```
+
+### これは何をしているか
+
+- `event.cookies.get('session')` … **Cookie の中の session 値を読む**
+- `session` があれば **ユーザー情報を作って `locals.user` にセット**
+- なければ **`null`**（未ログイン）
+- これでサイト中**どのページからでも `locals.user` を見られる**ようになる
+
+> 実務では、ここの「ユーザー情報を作る部分」が**もっと真面目**になります：
+> - `session` を**サーバー側のセッションストア**で照合
+> - DB から最新のユーザー情報を取りだす
+> - 期限切れなら `null` に倒す
+>
+> いきなり全部やらなくても、**まずは「Cookieがあれば仮ユーザー、なければ null」**の形を覚えれば十分です。
+
+## load で locals.user を使う
+
+これで `+page.server.ts` 側の見え方がスッキリします。
+
+```ts
+// 例：会員ページ src/routes/account/+page.server.ts
+import { redirect } from '@sveltejs/kit';
+
+export function load({ locals }) {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	return {
+		user: locals.user
+	};
+}
+```
+
+### これは何をしているか
+
+- `locals.user` … **`hooks.server.ts` で詰めたメモ**を読む
+- 未ログインなら `redirect(303, '/login')` で **`/login` に案内**
+- ログイン済みなら `user` をページに渡す
+
+> [`error / redirect`](/docs/sveltekit/error-redirect) の章で出てきた **「未ログインなら redirect」** のコードが、ここでようやく**全体像で動く**ようになります。
+>
+> 「**Cookieはどこで読むの？ → `hooks.server.ts`**」「**user はどこで使うの？ → 各ページの `load`**」と役割が分かれます。
+
+## 管理者だけ通す例
+
+「**ログイン済み + 管理者**」を要求する管理画面の典型例です。
+
+```ts
+// 例：管理画面 src/routes/admin/+page.server.ts
+import { error, redirect } from '@sveltejs/kit';
+
+export function load({ locals }) {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	if (locals.user.role !== 'admin') {
+		error(403, '管理者だけが見られます');
+	}
+
+	return {
+		user: locals.user
+	};
+}
+```
+
+### これは何をしているか
+
+- 1段目：**未ログイン** → `redirect(303, '/login')` で**ログインへ案内**
+- 2段目：**ログイン済みだが権限がない** → `error(403, '...')` で**ページを止める**
+- どちらも通れば、ユーザー情報を返してページ表示
+
+> 「**未ログイン → redirect / 権限なし → error**」は、管理画面の**鉄板パターン**です。
+> このパターンが書けると、**`/admin/...` のすべてのページに同じ守りをかけられる**ようになります。
+
+> 補足：`/admin/` 配下まるごと守りたいなら、**`+layout.server.ts`** にこの load を書く方法もあります。
+> そうすると `/admin/users`、`/admin/orders` など**全部に1か所で**かけられます（→ [+layout.svelte](/docs/sveltekit/layout)）。
+
+## hooks.server.ts と +page.server.ts の役割分担
+
+| | **`hooks.server.ts`** | **`+page.server.ts`** |
+| --- | --- | --- |
+| **どこに置く？** | `src/hooks.server.ts`（**ルート直下**） | `src/routes/.../+page.server.ts` |
+| **何回呼ばれる？** | **すべてのリクエスト**で1回 | **そのページに来たとき**に1回 |
+| **担当** | サイト全体の**入口処理** | **そのページ専用**の準備と受付 |
+| **書く例** | Cookie確認、`locals.user` をセット、ログ、メンテナンスモード | `load`（データ準備）と `actions`（フォーム受付）、`redirect` / `error` |
+| **`locals` を…** | **書きこむ** | **読む** |
+| **`form actions` を…** | 書かない | 書く |
+
+> ひとことで言うと：
+> **「`hooks.server.ts` で書く → 各ページの `+page.server.ts` で読む」**
+
+## +server.ts でも locals は使える
+
+API ルート（→ [+server.ts](/docs/sveltekit/api-routes)）でも、**まったく同じ `locals.user`** が使えます。
+
+```ts
+// 例：src/routes/api/me/+server.ts
+import { json } from '@sveltejs/kit';
+
+export function GET({ locals }) {
+	if (!locals.user) {
+		return new Response('Unauthorized', { status: 401 });
+	}
+
+	return json({ user: locals.user });
+}
+```
+
+### これは何をしているか
+
+- API でも `locals.user` で**ログイン状態**がわかる
+- 未ログインなら **401 Unauthorized** を返す
+- ログイン済みなら **JSON でユーザー情報を返す**
+
+> ページ側と同じ仕組みで動くので、「**`hooks.server.ts` を1か所書けば、ページも API も両方ログイン対応**」になります。これが大きな利点。
+
+## 実務では何に使う？
+
+`hooks.server.ts` は、**サイト全体に共通する処理**を1か所にまとめる場所です。
+
+- **ログイン状態の確認** … Cookie → `locals.user`
+- **会員ページの守り** … `+page.server.ts` で `locals.user` をチェック
+- **管理画面の権限チェック** … `locals.user.role` を見る
+- **アクセスログ** … 全リクエストの URL を記録
+- **メンテナンスモード** … ある条件で全リクエストを止めて案内ページへ
+- **言語設定** … URL や Cookie から言語を判定して `locals.lang` に入れる
+- **共通の Cookie 確認** … テーマ・通知許可・同意状態など
+- **CSRF 対策の補助** … リクエスト元を見て弾く
+
+> 「**ぜんぶの部屋で同じ確認をしたい**」と思ったら、`hooks.server.ts` に書くのが定番です。
+
+## よくある注意点
+
+- **`hooks.server.ts` はサーバー側だけ**で動きます。ブラウザ用の処理は書かない
+- `locals` に**秘密情報をそのまま全部**渡しすぎない（パスワードハッシュなどは入れない）
+- ページに返す情報は**必要最小限**に（`user.name` `user.role` だけなど）
+- 本物の認証では、Cookie の値を**サーバー側で照合**する必要がある（DB やセッションストア）
+- **失敗しても落ちない**ように `try / catch` を入れる場面もある（後述の練習で）
+
+> ひとことで言うと：「**`hooks.server.ts` は便利だが、書く内容は厳選する**」。
+
+## app.d.ts について少しだけ
+
+「`locals.user` ってどんな型？」と TypeScript に教えるには、**`src/app.d.ts`** というファイルを使います。
+
+```ts
+// src/app.d.ts
+declare global {
+	namespace App {
+		interface Locals {
+			user: { name: string; role: 'admin' | 'member' } | null;
+		}
+	}
+}
+
+export {};
+```
+
+### これは何をしているか
+
+- **`App.Locals`** という型定義を**世界中の `locals` に効かせる**
+- 各 `+page.server.ts` の `locals` が**自動でこの型**になる
+- 書き間違いを TypeScript が止めてくれる
+
+> いまは「**こういう書き方がある**」とだけ覚えておけばOK。
+> 認証を本物に育てる時に、はじめてここを書きこむことになります。
+
+## error-redirect 章とのつながり
+
+[`error / redirect`](/docs/sveltekit/error-redirect) の章では、こんな例が出ました。
+
+```ts
+// 例：会員ページの +page.server.ts
+import { redirect } from '@sveltejs/kit';
+
+export function load({ locals }) {
+	if (!locals.user) {
+		redirect(303, '/login');
+	}
+
+	return {
+		user: locals.user
+	};
+}
+```
+
+そのときは「**`locals` の中身は、SvelteKit が自動で入れてくれるわけではない**」「**`hooks.server.ts` で詰めるのが定番**」と書きました。
+このページで、**ようやくその「`hooks.server.ts` で詰める」**部分が完成しました。
+
+3つを並べると、こうなります：
+
+| 段階 | 担当 |
+| --- | --- |
+| 1️⃣ Cookie を読んで **`locals.user` を作る** | `hooks.server.ts` |
+| 2️⃣ ページの `load` で **`locals.user` を見て判断** | `+page.server.ts` |
+| 3️⃣ 必要なら **`redirect` / `error` で止める・送る** | [error / redirect](/docs/sveltekit/error-redirect) |
+
+ぜんぶつながって、**会員ページ・管理画面の入り口**が成立します。
+
+## admin-board への布石
+
+ここまで来ると、**`/admin/notices/` のような管理画面**を作れる土台が揃います。
+
+- **ログイン状態のチェック** … `hooks.server.ts` で `locals.user`
+- **管理者だけ通す** … `+layout.server.ts` で `error(403, ...)`
+- **お知らせを投稿するフォーム** … `+page.server.ts` の [`actions`](/docs/sveltekit/form-actions)
+- **削除ボタン** … 同じ `actions` に named action を追加
+- **見た目** … `+page.svelte` で [`{#each}`](/docs/svelte/each) と [`bind:value`](/docs/svelte/bind)
+
+[Todo server版](/docs/examples/todo-server) と [お知らせ一覧](/docs/examples/notice-board) で覚えた型を組み合わせれば、**もう書けます**。
+これは将来の **`examples/admin-board`** のページで実例として作ることになります。
+
+## 今日のまとめ
+
+- **`hooks.server.ts`** ＝ **入口の受付係**（すべてのリクエストが最初に通る）
+- **`event.locals`** ＝ **受付メモ**（書く側が `hooks.server.ts`、読む側が各ページ）
+- 定番は **「Cookie → `locals.user`」を `hooks` で詰める**
+- 各ページの `+page.server.ts` で `locals.user` を見て、必要なら **`redirect`** や **`error`**
+- API（`+server.ts`）でも**同じ `locals.user`** が使える
+- 型を厳密にしたいときは `src/app.d.ts` の `App.Locals`
+
+## 今はここだけでOK
+
+> **「`hooks.server.ts` は受付係。`locals` は受付メモ。」**
+
+このひとことだけで、`hooks` の役割は十分覚えられます。
+
+## 次に作る小さな練習
+
+- `src/hooks.server.ts` の**基本形**（`handle({ event, resolve })`）を**何も見ずに紙に書く**
+- `event.locals.user = { name: '...', role: '...' }` を**仮で詰める**コードをイメージする
+- `+page.server.ts` 側で `if (!locals.user) redirect(303, '/login')` の流れを**図に描く**
+- [Todo server版](/docs/examples/todo-server) の `+page.server.ts` を見ながら、「**ここに `if (!locals.user) error(403)` を足したら管理画面になる**」と心の中で言ってみる
+- [お知らせ一覧](/docs/examples/notice-board) を、`/admin/notices/` 版に作りなおすイメージを**箇条書きで書く**（`hooks` で受付 → `+layout.server.ts` で守り → `actions.create` で投稿）
+- 余裕があれば、`src/app.d.ts` に **`App.Locals` の型**を1つだけ書いてみる

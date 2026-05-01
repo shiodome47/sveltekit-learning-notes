@@ -1,0 +1,140 @@
+---
+title: form actions は「フォームの受付」
+name: form actions：フォームの受付
+description: form は提出箱、action は受付係。Todo を追加する例を、JavaScriptなしでも動く形から始めます。
+category: SvelteKit 基本
+order: 30
+---
+
+`form actions` は、ひとことで言うと
+
+> **「フォームを受け取る、受付係」**
+
+です。
+
+## たとえ話：きゅうしょくの提出箱
+
+学校で、宿題やプリントを「**提出箱**」に入れますよね。
+箱に入れたら、先生（受付係）がそれを受け取ってくれます。
+
+Web の世界も同じです。
+
+| 用語 | たとえ |
+| --- | --- |
+| `<form>` | プリントを入れる**提出箱** |
+| `action` | プリントを受け取る**受付係** |
+
+## いちばん小さな例：Todo を追加する
+
+`/todos` というページで、文字を入力 →「追加」ボタンを押すと、
+リストに追加される、というシンプルな例です。
+
+```svelte
+<!-- src/routes/todos/+page.svelte -->
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<h1>やることリスト</h1>
+
+<ul>
+	{#each data.todos as todo}
+		<li>{todo}</li>
+	{/each}
+</ul>
+
+<form method="POST" action="?/add">
+	<input name="text" placeholder="やることを書く" />
+	<button>追加</button>
+</form>
+```
+
+```ts
+// src/routes/todos/+page.server.ts
+const todos: string[] = ['さんすうの宿題'];
+
+export const load = () => ({ todos });
+
+export const actions = {
+	add: async ({ request }) => {
+		const data = await request.formData();
+		const text = data.get('text');
+		if (typeof text === 'string' && text.length > 0) {
+			todos.push(text);
+		}
+		return { ok: true };
+	}
+};
+```
+
+### これは何をしているか
+
+- `<form method="POST" action="?/add">` … 「**add 受付係**にプリントを送る提出箱」
+- `<input name="text">` … 「文字を書きこむ枠」（名札は `text`）
+- `actions.add` … 受付係。`request.formData()` で送られた中身を取り出す
+- `data.get('text')` … 「`text` という名札のついた値」を取り出す
+- `todos.push(text)` … リストに追加
+
+ボタンを押すと、フォームが送られて、サーバー側でリストが増えます。
+
+## ここがすごい：JavaScript なしでも動く
+
+このフォームは、**JavaScript を切っていても動きます**。
+ふつうの HTML の `<form>` の仕組みをそのまま使っているからです。
+
+つまり、
+
+- 通信が遅くても動く
+- 古いスマホでも動く
+- アクセシビリティ的にもやさしい
+
+これが SvelteKit の `form actions` のうれしいところです。
+
+## あとから「スムーズ送信」をつける（軽くだけ）
+
+ふつうの `<form>` を送ると、ページがいったん**まるごと再読み込み**されます。
+それを「**画面を再読み込みせずに**送る」ようにできます。
+
+`use:enhance` という、**あとから貼るスムーズ送信用のシール**です。
+
+```svelte
+<script lang="ts">
+	import { enhance } from '$app/forms';
+</script>
+
+<form method="POST" action="?/add" use:enhance>
+	<input name="text" />
+	<button>追加</button>
+</form>
+```
+
+### これは何をしているか
+
+- `use:enhance` を貼ると、送信時にページ全体を再読み込みしなくなる
+- それ以外の中身は、何も変えなくてOK
+- 「**シールを貼るだけ**」で、スムーズになる
+
+> ポイント：先に**シールなしで動くフォーム**を作ってから、最後に `use:enhance` を貼る順番がおすすめです。
+
+## 今日のまとめ
+
+- `<form>` は**提出箱**、`action` は**受付係**
+- `+page.server.ts` の `actions` で受け取る
+- `request.formData()` で中身を取り出す
+- JavaScript なしでも動く
+- スムーズ送信は `use:enhance` を**あとから貼るシール**
+
+## 今はここだけでOK
+
+「フォームを送って、何か処理したい」と思ったら、
+
+1. `<form method="POST" action="?/名前">`
+2. `+page.server.ts` の `actions.名前` で受け取る
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- 上の Todo の例をそのまま動かしてみる
+- 「ぜんぶ消す」ボタンと `actions.clear` を作ってみる
+- `use:enhance` を足して、画面が再読み込みされない動きにしてみる

@@ -1,0 +1,213 @@
+---
+title: optional は「あってもなくてもいい」
+name: optional / ?
+description: "「?」は「あってもなくてもいい」印。Notice の image や updatedAt のような任意フィールド、user?.name の安全アクセス、value ?? '未設定' の代替値。SvelteKit 実務で頻出の3点セットを覚えます。"
+category: TypeScript 実践基本
+order: 40
+---
+
+## ひとことで言うと
+
+> **`?`** … 型に付ける「**あってもなくてもいい**」の印
+> **`?.`** … 「**あれば取り出す**」の使い方（**optional chaining**）
+> **`??`** … 「**なかったら代わりに**」の使い方（**nullish coalescing**）
+
+この3つは、SvelteKit 実務で**毎日のように出てきます**。
+
+## たとえ話：荷物のオプション
+
+引っ越しの荷物にたとえると：
+
+| 種類 | 例 |
+| --- | --- |
+| **必須** | 服・歯ブラシ（必ず入れる） |
+| **オプション** | 傘・本・お菓子（**入れても入れなくてもいい**） |
+
+`?` は、この**「入れても入れなくてもいい」のオプション**を表すマークです。
+
+## ? は「あってもなくてもいい」（型のマーク）
+
+```ts
+type Notice = {
+	title: string;
+	body: string;
+	image?: string;
+	updatedAt?: string;
+};
+```
+
+### これは何をしているか
+
+- `title` と `body` は **必須**（ないとエラー）
+- `image?` と `updatedAt?` は **任意**（あってもなくてもいい）
+- 任意フィールドの値は `string` または **`undefined`**
+
+```ts
+const a: Notice = {
+	title: '地蔵盆',
+	body: '8月23日'
+}; // OK（image・updatedAt なし）
+
+const b: Notice = {
+	title: '地蔵盆',
+	body: '8月23日',
+	image: '/jizobon.jpg'
+}; // OK
+```
+
+[お知らせ一覧](/docs/examples/notice-board) や [お知らせ管理画面](/docs/examples/admin-board) で、**画像や更新日があるかわからない**ときに使います。
+
+## ?. は「あれば取り出す」（optional chaining）
+
+`undefined` のとき**エラーにならず undefined を返してくれる**書き方です。
+
+```ts
+let user: { name: string } | null = null;
+
+const n = user?.name; // n は undefined（エラーにならない）
+```
+
+### これは何をしているか
+
+- `user?.name` … `user` が `null` か `undefined` なら `undefined` を返す
+- そうでなければ `user.name` を取り出す
+- **エラーで画面が真っ白**にならない
+
+> ふつうに `user.name` と書くと、`user` が `null` のときに **「null の name は読めません」** というエラーで落ちます。
+> `?.` を1つ置くだけで、それを防げます。
+
+実務でいちばん多いのは **`form?.error`**：
+
+```svelte
+{#if form?.error}
+	<p>{form.error}</p>
+{/if}
+```
+
+[Todo server版](/docs/examples/todo-server) や [お知らせ管理画面](/docs/examples/admin-board) のフォーム周りで、**`form` が `undefined` のとき**を安全に扱う定番です。
+
+## ?? は「なかったら代わりに」（nullish coalescing）
+
+`undefined` または `null` だったら**別の値を使う**書き方です。
+
+```ts
+const imageText = notice.image ?? '画像なし';
+const userName = user?.name ?? 'ゲスト';
+```
+
+### これは何をしているか
+
+- `??` の左が **`null` / `undefined`** なら、**右の値を使う**
+- そうでなければ左の値を使う
+- 「**未設定のとき用の代わり**」を**1行で**用意できる
+
+> 似た書き方に `||` がありますが、`||` は **`0` や `''`（空文字）も「無し」扱い**にしてしまいます。
+> 数字や文字を扱うときは **`??` のほうが安全**です。
+
+## `{#if}` と組み合わせる
+
+Notice の `image` を表示するなら、[`{#if}`](/docs/svelte/if) を1枚かぶせます。
+
+```svelte
+{#if notice.image}
+	<img src={notice.image} alt="" />
+{/if}
+```
+
+### これは何をしているか
+
+- `notice.image` が **あれば** `<img>` を出す
+- `undefined` なら**何も出さない**
+- これで「画像なしのお知らせ」も**安全に**表示できる
+
+## 3点セットの組み合わせ例
+
+`?`（型） + `?.`（取り出し） + `??`（代替）を1か所で使う典型例です。
+
+```ts
+type Notice = {
+	title: string;
+	body: string;
+	image?: string;
+	updatedAt?: string;
+};
+
+function summary(notice?: Notice) {
+	return {
+		title: notice?.title ?? '（無題）',
+		image: notice?.image ?? '/default.jpg',
+		updated: notice?.updatedAt ?? '更新なし'
+	};
+}
+```
+
+### これは何をしているか
+
+- `notice?` … 引数自体が**省略可能**
+- `notice?.title` … `notice` が `undefined` のときも安全
+- `?? '（無題）'` … 値がないときは **「（無題）」**
+
+「**引数がなくても、画面が真っ白にならない**」関数になります。
+
+## 自治会サイトに応用するとき
+
+`Notice` を「**画像あり/なし** / **更新あり/なし**」両対応にするには：
+
+```ts
+type Notice = {
+	slug: string;
+	title: string;
+	body: string;
+	createdAt: string;
+	image?: string;        // 画像なしの記事もある
+	updatedAt?: string;    // 修正してない記事もある
+	important?: boolean;   // 重要マークも任意
+};
+```
+
+```svelte
+<article class:important={notice.important}>
+	{#if notice.image}
+		<img src={notice.image} alt="" />
+	{/if}
+
+	<h2>{notice.title}</h2>
+
+	<p>
+		投稿：{notice.createdAt}
+		{#if notice.updatedAt}
+			／ 更新：{notice.updatedAt}
+		{/if}
+	</p>
+
+	<p>{notice.body}</p>
+</article>
+```
+
+### これは何をしているか
+
+- `class:important={notice.important}` … 重要なら強調（→ [class / style](/docs/svelte/class-style)）
+- `{#if notice.image}` … 画像があるときだけ `<img>`
+- `{#if notice.updatedAt}` … 更新があるときだけ `／ 更新：...`
+- 全項目が**安全に**処理される
+
+## 今日のまとめ
+
+- **`?`** … 型に「あってもなくてもいい」を付ける（`image?: string`）
+- **`?.`** … 値が無くてもエラーにならず取り出す（`form?.error`）
+- **`??`** … 無いときの**代わりの値**（`notice.image ?? '画像なし'`）
+- 3点セットで、**画面が真っ白になるバグ**をほぼ防げる
+
+## 今はここだけでOK
+
+> **「`?` は型のマーク、`?.` は安全に取り出す、`??` は無いとき用の代わり」**
+
+この3点だけ覚えればOK。
+
+## 次に作る小さな練習
+
+- [お知らせ一覧](/docs/examples/notice-board) の `Notice` 型に、`image?: string` と `updatedAt?: string` を足してみる
+- [お知らせ管理画面](/docs/examples/admin-board) の追加フォームに**画像URLの入力欄**を足し、`?.` と `??` で安全に表示する
+- `<img src={notice.image ?? '/default.jpg'} alt="" />` を書いて、画像が無いお知らせにも**仮の画像**を出す
+- `user?.role === 'admin'` のように、ログイン情報が無くても安全に判定する書き方を試す
+- [`{#if}`](/docs/svelte/if) と組み合わせて、`{#if user?.role === 'admin'}` で**管理者専用ボタン**を出す

@@ -1,0 +1,192 @@
+---
+title: Pick / Omit / Partial は「型の切り抜き道具」
+name: Utility Types
+description: すでにある型を切り抜いたり、外したり、ゆるめたりする道具。notice-board の Omit<Notice, 'body'> と admin-board の編集フォームに Partial を使う実務シーンで覚えます。
+category: TypeScript 実践基本
+order: 50
+---
+
+## ひとことで言うと
+
+`Pick` / `Omit` / `Partial` は、ひとことで言うと
+
+> **「すでにある型から、別の型を作りなおす道具」**
+
+です。
+**ゼロから書きなおさず**、**型を加工する**のがコツ。
+
+## たとえ話：折り紙
+
+| たとえ | コード |
+| --- | --- |
+| **元の折り紙** | `type Notice = { ... }` |
+| **一部だけ切り抜く** | `Pick<Notice, 'title'>` |
+| **一部だけ外す** | `Omit<Notice, 'body'>` |
+| **全部の角をやわらかくする（任意にする）** | `Partial<Notice>` |
+
+折り紙を加工するように、**型を切り抜いたり丸めたり**できます。
+
+## 元になる型
+
+このページでは、お知らせの型を例にします。
+
+```ts
+type Notice = {
+	slug: string;
+	title: string;
+	date: string;
+	excerpt: string;
+	body: string;
+};
+```
+
+### これは何をしているか
+
+- お知らせ1件に必要な5項目
+- これを元に、**用途別の型**を3パターン作っていきます
+
+## Omit は「一部を外す」
+
+「**この項目だけ**いらない」というときに使います。
+
+```ts
+type NoticeSummary = Omit<Notice, 'body'>;
+// → { slug; title; date; excerpt }
+```
+
+### これは何をしているか
+
+- `Omit<Notice, 'body'>` … `Notice` から `body` を**外した型**
+- 残るのは `slug` / `title` / `date` / `excerpt`
+- **一覧では `body` を返したくない**ときに使う
+
+> [お知らせ一覧](/docs/examples/notice-board) の **`getNoticeSummaries()`** が**まさにこの形**でした：
+>
+> ```ts
+> export type NoticeSummary = Omit<Notice, 'body'>;
+> ```
+>
+> 「**一覧では軽く、詳細では全部**」を**同じ `Notice` から派生**させて作るパターン。
+
+## Pick は「一部だけ選ぶ」
+
+「**この項目だけ**ほしい」というときに使います。
+
+```ts
+type NoticeTitle = Pick<Notice, 'title' | 'slug'>;
+// → { title; slug }
+```
+
+### これは何をしているか
+
+- `Pick<Notice, 'title' | 'slug'>` … `Notice` から `title` と `slug` だけ**選んだ型**
+- 残るのは2項目だけ
+- **タイトルだけのリンク用**などに使う
+
+> ナビメニューやパンくずリストなど、「**一部の情報だけほしい**」場面で使います。
+
+## Partial は「全部任意にする」
+
+「**全部の項目を、あってもなくてもいいに変える**」道具です。
+
+```ts
+type NoticeDraft = Partial<Notice>;
+// → { slug?; title?; date?; excerpt?; body? }
+```
+
+### これは何をしているか
+
+- `Partial<Notice>` … `Notice` の**全項目に `?` を付けた型**（→ [optional](/docs/typescript/optional)）
+- すべてのフィールドが**任意**になる
+- **下書き保存** や **更新フォーム**（一部だけ送る）で使う
+
+> [お知らせ管理画面](/docs/examples/admin-board) を**編集機能つき**に発展させるとき、`actions.update` で受け取る型は **`Partial<Notice>`** が自然です。
+> 「**変更したい項目だけ送る**」という考え方に合うからです。
+
+## 3つを使い分ける目安
+
+| やりたいこと | 道具 |
+| --- | --- |
+| **特定項目だけ外したい**（残りはそのまま） | `Omit<元, '外す名前'>` |
+| **特定項目だけ取り出したい** | `Pick<元, '取る名前'>` |
+| **全部任意にしたい**（下書き・編集フォーム） | `Partial<元>` |
+
+## ちょっと大事な実務の話
+
+「**型を毎回ゼロから書きなおさない**」ことは、実務でとても大事です。
+
+- 元の型 (`Notice`) を **1か所だけ**にする
+- 派生型 (`NoticeSummary`, `NoticeDraft`) は**加工して作る**
+- 元の型を直すと、**派生型も自動で追従**してくれる
+
+> 「**真実の型は1か所**」——これが Utility Types のうれしさです。
+> [お知らせ一覧](/docs/examples/notice-board) で `Notice` を1度書いておけば、**一覧用も編集用も自動で揃う**わけです。
+
+## 実例：管理画面の編集フォーム
+
+`Partial<Notice>` を使うと、**編集 actions**が綺麗に書けます。
+
+```ts
+// src/routes/admin/notices/[slug]/+page.server.ts
+import type { Actions } from './$types';
+import { updateNotice } from '$lib/server/notices';
+
+export const actions: Actions = {
+	update: async ({ params, request }) => {
+		const data = await request.formData();
+
+		const patch: Partial<Notice> = {
+			title: String(data.get('title') ?? '').trim(),
+			body: String(data.get('body') ?? '').trim()
+		};
+
+		updateNotice(params.slug, patch);
+		return { ok: true };
+	}
+};
+```
+
+### これは何をしているか
+
+- `Partial<Notice>` … 「**変更したい項目だけ持つ**」型
+- 全項目を埋めなくていいので、**送信フォームで一部だけ更新**できる
+- `updateNotice(slug, patch)` … **既存のお知らせ**に **`patch` の内容だけ**を上書き
+
+> [お知らせ管理画面](/docs/examples/admin-board) の編集機能は、まさにこのパターンで作れます。
+
+## ほかにもよく見る Utility Types（参考）
+
+最初は `Pick` / `Omit` / `Partial` の3つだけ覚えればOK。
+慣れてきたら、こんなのもあります（深追いしなくて大丈夫）。
+
+| 名前 | 何をする？ |
+| --- | --- |
+| `Required<T>` | 全部を**必須にする**（Partial の逆） |
+| `Readonly<T>` | 全部を**書き換え不可**にする |
+| `Record<K, V>` | キー K・値 V のオブジェクトを作る |
+| `ReturnType<F>` | 関数の**戻り値の型**を取る |
+
+> 「**そういえばあった気がする**」と思った時に検索すれば、すぐ思い出せます。
+
+## 今日のまとめ
+
+- `Pick` / `Omit` / `Partial` は **「型の切り抜き道具」**
+- **`Omit`** … 一部を**外す**
+- **`Pick`** … 一部だけ**選ぶ**
+- **`Partial`** … 全部**任意**にする
+- 「**元の型は1か所、派生型は加工で作る**」が実務のコツ
+- [お知らせ一覧](/docs/examples/notice-board) の `NoticeSummary` も、これで作られている
+
+## 今はここだけでOK
+
+> **「型を新しく書きなおすかな？」と思ったら、まず Pick / Omit / Partial を考える。**
+
+これだけ覚えればOK。
+
+## 次に作る小さな練習
+
+- [お知らせ一覧](/docs/examples/notice-board) の `NoticeSummary = Omit<Notice, 'body'>` を**何も見ずに書いてみる**
+- 自分のサイトに `User` 型を作って、`Omit<User, 'password'>` で**パスワードなしの公開用ユーザー型**を作る
+- [お知らせ管理画面](/docs/examples/admin-board) に**編集フォーム**を足すとき、`Partial<Notice>` を引数に取る `updateNotice` を考える
+- ナビメニュー用に `Pick<Notice, 'slug' | 'title'>` を作って、**最小情報だけ**を持つ型にしてみる
+- 慣れたら `Required<NoticeDraft>` で「**全項目必須**」に戻す逆操作も試す

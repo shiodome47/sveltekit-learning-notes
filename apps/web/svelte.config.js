@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url';
-import adapter from '@sveltejs/adapter-cloudflare';
+import adapter from '@sveltejs/adapter-netlify';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { escapeSvelte, mdsvex } from 'mdsvex';
 import { createHighlighter } from 'shiki';

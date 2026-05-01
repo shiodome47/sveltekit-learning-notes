@@ -8,5 +8,5 @@ export const brandingConfig = {
 	/** Raw SVG markup used in logo components and generated assets. */
 	logoRaw: logo,
 	/** Human-readable brand name displayed in the UI. */
-	name: 'Motion Core'
+	name: 'Svelte & TS Notes'
 };

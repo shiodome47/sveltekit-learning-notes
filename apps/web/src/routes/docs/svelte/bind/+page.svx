@@ -1,0 +1,162 @@
+---
+title: bind は「画面とデータをつなぐひも」
+name: bind：画面とデータをつなぐひも
+description: bind は、画面（input・チェックボックスなど）と変数を「ひも」でつなぐ仕組み。フォーム・検索欄・設定画面・チェックリストの基本道具です。
+category: Svelte 実践基本
+order: 50
+---
+
+`bind` は、ひとことで言うと
+
+> **「画面と変数を、両方つながる『ひも』でつなぐ仕組み」**
+
+です。
+
+## たとえ話：糸電話
+
+紙コップ2つを糸でつないだ糸電話を思い浮かべてください。
+**片方を引っぱると、もう片方も動きますよね。**
+
+`bind` はちょうどこの「糸電話」です。
+画面（入力欄）と変数のあいだに**ひも**が張ってあって、
+
+- **画面の文字が変われば → 変数も変わる**
+- **変数を変えれば → 画面の文字も変わる**
+
+両方向に動きます。
+
+## いちばん小さな例：入力した文字をそのまま表示
+
+```svelte
+<script lang="ts">
+	let name = $state('');
+</script>
+
+<input bind:value={name} placeholder="名前を入れてね" />
+<p>こんにちは、{name} さん</p>
+```
+
+### これは何をしているか
+
+- `let name = $state('')` … 「変わる文字の箱」
+- `bind:value={name}` … 「**入力欄と `name` をひもでつなぐ**」
+- `<p>こんにちは、{name} さん</p>` … 入力した文字がそのまま下に出る
+
+普通なら `oninput` で「変わったら値を取り出して…」と書くところを、
+`bind:value` の **1行で済む**のがポイントです。
+
+## チェックボックスの bind:checked
+
+```svelte
+<script lang="ts">
+	let agree = $state(false);
+</script>
+
+<label>
+	<input type="checkbox" bind:checked={agree} />
+	利用規約に同意します
+</label>
+
+<button disabled={!agree}>送信</button>
+```
+
+### これは何をしているか
+
+- `agree` … チェック状態を入れる箱（true / false）
+- `bind:checked={agree}` … **チェックボックスと `agree` をひもでつなぐ**
+- `disabled={!agree}` … チェックが入るまで送信ボタンを押せなくする
+
+「同意したら送信ボタンが有効になる」フォームが、これだけで作れます。
+
+## Todo アプリで bind を使う
+
+Todoアプリでは、`bind` が **2 か所**で活躍します。
+
+### ① 入力欄と「これから追加するTodo」をつなぐ
+
+```svelte
+<script lang="ts">
+	let text = $state('');
+	let todos = $state<{ text: string; done: boolean }[]>([]);
+
+	function add() {
+		if (text === '') return;
+		todos.push({ text, done: false });
+		text = '';
+	}
+</script>
+
+<input bind:value={text} placeholder="やることを書く" />
+<button onclick={add}>追加</button>
+
+<ul>
+	{#each todos as todo}
+		<li>{todo.text}</li>
+	{/each}
+</ul>
+```
+
+### これは何をしているか
+
+- `bind:value={text}` … 入力欄と `text` をひもでつなぐ
+- `add()` … 「`todos` に追加して、`text` を空にする」
+- `text = ''` で**入力欄も自動で空になる**（ひもがつながっているから）
+
+### ② 各Todoの「終わった？」状態をつなぐ
+
+```svelte
+{#each todos as todo}
+	<li>
+		<input type="checkbox" bind:checked={todo.done} />
+		<span>{todo.text}</span>
+	</li>
+{/each}
+```
+
+### これは何をしているか
+
+- `bind:checked={todo.done}` … チェックボックスと、その Todo の `done` をひもでつなぐ
+- チェックを入れると `todo.done` が `true` になり、外すと `false` になる
+- 別の場所で `$derived(todos.filter(t => !t.done).length)` などで「残り件数」も自動で更新できる
+
+## 実務でよく使う場面
+
+`bind` は、**ユーザーの入力**を受けるところすべてが出番です。
+
+- **入力フォーム** … 名前・メール・住所など `bind:value`
+- **検索欄** … `bind:value` + `$derived` で絞り込み
+- **設定画面** … トグル・ラジオ・セレクトに `bind:checked` / `bind:value`
+- **チェックリスト** … 各行の完了状態に `bind:checked`
+- **数値入力** … `bind:value` + `type="number"`（数値として取り出せる）
+
+> ユーザーが触るUIには、ほぼ必ず `bind` が出てきます。
+
+## 使いすぎ注意（やさしい注意点）
+
+`bind` はとても便利ですが、**便利すぎて使いすぎる**ことがあります。
+
+- 子コンポーネントの中身まで `bind` で外から書きかえると、「**いま誰が値を変えたか**」が追いかけにくくなる
+- 大きなフォームでは「親が状態を持って、子は表示だけ」にしたほうが整理しやすい場面も多い
+- 迷ったら「**入力欄ひとつ分まで**」を `bind` の目安にすると、読みやすさを保ちやすい
+
+> ひとことで言うと：**`bind` は最初の入力欄〜検索欄〜チェックボックスで使う**。
+> 子コンポーネントを介した深い `bind` は、慣れてからでOK。
+
+## 今日のまとめ
+
+- `bind` は「**画面と変数をつなぐ両方向のひも**」
+- 入力欄なら `bind:value`、チェックなら `bind:checked`
+- Todoアプリでは「入力欄」と「各Todoの完了状態」の両方で活躍
+- 実務では、フォーム・検索・設定・チェックリストの基本道具
+- 深く使いすぎないのがコツ
+
+## 今はここだけでOK
+
+入力欄やチェックボックスの値を、変数とつなぎたくなったら `bind:value` か `bind:checked`。
+これだけ覚えておけば、フォームの 8 割は書けます。
+
+## 次に作る小さな練習
+
+- 入力した文字をそのまま下の `<p>` に表示するページを作る
+- 「同意します」チェックボックスを作って、チェックしたときだけ送信ボタンを有効にする
+- 検索欄を作って、`bind:value` + `$derived` で「入力に合うものだけ」表示する一覧を作る
