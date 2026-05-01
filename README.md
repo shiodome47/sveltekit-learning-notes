@@ -146,12 +146,21 @@ bun run build
 
 [build.environment]
   NODE_VERSION = "20"
+
+[functions]
+  directory = ".netlify/functions-internal"
 ```
 
 - `base = "apps/web"` … モノレポなので SvelteKit アプリのある場所を Netlify に伝える
 - `command = "bun run build"` … `apps/web/package.json` の `build` スクリプト
 - `publish = "build"` … `adapter-netlify` の出力先（base からの相対パス）
-- Functions は `apps/web/.netlify/functions-internal/` に自動配置 → Netlify が自動検出
+- `[functions] directory = ".netlify/functions-internal"` … `adapter-netlify` が出力する SSR 用 catch-all 関数（Functions v2、`path: ["/*"]`）の置き場を Netlify に明示。auto-detect でも動く場面が多いが、モノレポでは見落とされることがあるため安全策として明示している
+
+### Netlify ダッシュボードの Build settings について
+
+Netlify の UI には **Base directory / Package directory / Publish directory / Functions directory** という入力欄があります。**ここはすべて空欄でOK**です（または UI の自動入力のままでOK）。`netlify.toml` がリポジトリルートにあれば、UI の値より **`netlify.toml` が優先**されます。
+
+UI 側で値を変更すると `Overridden by netlify.toml` という赤いメッセージが表示されますが、これは**正常動作**です。「toml が勝っている」という確認にもなります。
 
 ### 環境変数
 
