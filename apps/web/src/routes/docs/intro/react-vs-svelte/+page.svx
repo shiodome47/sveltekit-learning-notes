@@ -1,0 +1,862 @@
+---
+title: React と Svelte の比較（Component Party の読み方）
+name: React と Svelte の比較
+description: 「React ではこう書くやつ、Svelte だとどう書くの？」を、フレームワーク比較サイト Component Party の項目順に並べた対応表。React を知っている人の翻訳表としても、Svelte 初心者の「他の世界はこうなんだ」を知る窓としても使えます。
+category: はじめに
+order: 19
+---
+
+## ひとことで言うと
+
+> **React と Svelte は「やりたいことは同じ、書き方が違う」**。
+> その「書き方の違い」を、**同じお題で横に並べて見比べられる**のが **Component Party** です。
+
+このページは、Component Party の項目順に **React と Svelte 5 の書き方を並べて**、それぞれが**このサイトのどの章に対応するか**をひもづけた対応表です。
+
+## Component Party とは
+
+[Component Party](https://component-party.dev/) は、「**同じお題を、いろいろなフレームワークで書くとどうなるか**」を横並びで見られるサイトです。
+
+- 比較できるフレームワーク：**React / Svelte 5 / Vue 3 / Angular / Lit / Ember / Solid.js** など 9 種類
+- 上のボタンでフレームワークを選ぶと、**選んだものだけが横に並ぶ**
+- お題は「**状態を作る → 画面に出す → 部品を組み合わせる → フォーム → データ取得**」の順
+
+つまり、「**Svelte で `$state` と書くやつ、React だと何？**」が一目でわかります。
+
+> 使い方のコツ：上部で **React と Svelte 5 の2つだけ**を選ぶと、いちばん見やすくなります。
+
+## 読み方の注意
+
+このページは **React を知らなくても読めます**。
+
+- **React を知っている人** … 左の React を見て、右の Svelte に「翻訳」してください
+- **React を知らない人** … 右の Svelte だけ読んで、「他の世界はもっと長く書くんだな」と眺めるだけでOK
+
+各お題には、**このサイトの該当章へのリンク**を付けています。
+詳しく知りたくなったら、そこへ飛んでください。
+
+## まず対応表だけ
+
+「あれ、React の何に当たるんだっけ？」用の早見表です。
+
+| やりたいこと | React | Svelte 5 | このサイトの章 |
+| --- | --- | --- | --- |
+| 変わる値を作る | `useState` | `$state` | [$state](/docs/svelte/state) |
+| 値を更新する | `setName("Jane")` | `name = "Jane"` | [$state](/docs/svelte/state) |
+| 自動で計算する値 | `useMemo` / ただの変数 | `$derived` | [$derived](/docs/svelte/derived) |
+| 値が変わったら動く処理 | `useEffect` | `$effect` | [$effect](/docs/svelte/effect) |
+| 画面が出たときに動く | `useEffect(..., [])` | `onMount` | [$effect](/docs/svelte/effect) |
+| リストを並べる | `.map()` + `key` | `{#each}` | [`{#each}`](/docs/svelte/each) |
+| 条件で出し分け | `&&` / 三項演算子 | `{#if}` / `{:else if}` | [`{#if}`](/docs/svelte/if) |
+| クリックに反応 | `onClick={...}` | `onclick={...}` | [$state](/docs/svelte/state) |
+| DOM 要素をつかむ | `useRef` + `ref` | `bind:this` | [bind](/docs/svelte/bind) |
+| 親から子へ渡す | 関数の引数 `({ name })` | `$props()` | [props](/docs/svelte/props) |
+| 子から親へ伝える | コールバック props | コールバック props（同じ） | [props](/docs/svelte/props) |
+| 子の中身を差し込む | `children` | `children` snippet + `{@render}` | [props](/docs/svelte/props) |
+| 遠い子孫へ渡す | `createContext` / `useContext` | `setContext` / `getContext` | [props](/docs/svelte/props) |
+| 入力欄とつなぐ | `value` + `onChange` | `bind:value` | [bind](/docs/svelte/bind) |
+| class を出し分け | `className={...}` | `class={...}` / `class:名前` | [class / style](/docs/svelte/class-style) |
+| データ取得 | カスタムフック | `.svelte.ts` の関数 / `load` | [load](/docs/sveltekit/load) |
+
+> ざっくり言うと、**React の `useXxx` は、Svelte では `$xxx`（ルーン）か、ただの代入**に置き換わります。
+
+## 1. Reactivity：状態を作る・更新する・計算する
+
+### 状態を宣言する（Declare state）
+
+**React**
+
+```jsx
+import { useState } from "react";
+
+export default function Name() {
+  const [name] = useState("John");
+
+  return <h1>Hello {name}</h1>;
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let name = $state("John");
+</script>
+
+<h1>Hello {name}</h1>
+```
+
+- React は「**値と、値を変える関数のペア**」を `useState` から受け取ります
+- Svelte は「**変わる値ですよ**」と `$state` で印をつけた、ただの変数です
+- → [$state：変わる値](/docs/svelte/state)
+
+### 状態を更新する（Update state）
+
+**React**
+
+```jsx
+import { useEffect, useState } from "react";
+
+export default function Name() {
+  const [name, setName] = useState("John");
+
+  useEffect(() => {
+    setName("Jane");
+  }, []);
+
+  return <h1>Hello {name}</h1>;
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let name = $state("John");
+  name = "Jane";
+</script>
+
+<h1>Hello {name}</h1>
+```
+
+- React は **`setName(...)` を呼ばないと画面が変わりません**（変数に直接代入しても無視される）
+- Svelte は **ふつうに `=` で代入するだけ**で画面が変わります
+- ここが、React から来た人が**いちばん最初に「ラク！」と感じるところ**です
+
+### 計算した値（Computed state）
+
+**React**
+
+```jsx
+import { useState } from "react";
+
+export default function DoubleCount() {
+  const [count] = useState(10);
+  const doubleCount = count * 2;
+
+  return <div>{doubleCount}</div>;
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let count = $state(10);
+  const doubleCount = $derived(count * 2);
+</script>
+
+<div>{doubleCount}</div>
+```
+
+- React は**コンポーネント関数がまるごと再実行される**ので、ただの `const` でも毎回計算し直されます（重い計算なら `useMemo`）
+- Svelte は関数が再実行されないので、「**`count` が変わったら計算し直してね**」と `$derived` で伝えます
+- → [$derived：自動で計算](/docs/svelte/derived)
+
+## 2. Templating：画面に出す
+
+### リストを並べる（Loop）
+
+**React**
+
+```jsx
+export default function Colors() {
+  const colors = ["red", "green", "blue"];
+  return (
+    <ul>
+      {colors.map((color) => (
+        <li key={color}>{color}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  const colors = ["red", "green", "blue"];
+</script>
+
+<ul>
+  {#each colors as color (color)}
+    <li>{color}</li>
+  {/each}
+</ul>
+```
+
+- React は JavaScript の `.map()` で HTML を組み立てます
+- Svelte は **`{#each}` という専用の書き方**があります
+- 「1件ずつを見分ける目印」は、React は `key={...}`、Svelte は `(color)` のカッコ
+- → [`{#each}`：リストを並べる](/docs/svelte/each)
+
+### クリックに反応する（Event click）
+
+**React**
+
+```jsx
+import { useState } from "react";
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+
+  function incrementCount() {
+    setCount((count) => count + 1);
+  }
+
+  return (
+    <>
+      <p>Counter: {count}</p>
+      <button onClick={incrementCount}>+1</button>
+    </>
+  );
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let count = $state(0);
+
+  function incrementCount() {
+    count++;
+  }
+</script>
+
+<p>Counter: {count}</p>
+<button onclick={incrementCount}>+1</button>
+```
+
+- React は `onClick`（**C が大文字**）、Svelte 5 は `onclick`（**ぜんぶ小文字**、HTML と同じ）
+- React は `<>...</>` で1つに包む必要がありますが、Svelte は**要素を何個並べてもOK**
+- このカウンターは、このサイトの[いちばん最初の例](/docs/svelte/state)と同じものです
+
+### 条件で出し分ける（Conditional）
+
+**React**
+
+```jsx
+import { useState } from "react";
+
+const TRAFFIC_LIGHTS = ["red", "orange", "green"];
+
+export default function TrafficLight() {
+  const [lightIndex, setLightIndex] = useState(0);
+
+  const light = TRAFFIC_LIGHTS[lightIndex];
+
+  function nextLight() {
+    setLightIndex((lightIndex + 1) % TRAFFIC_LIGHTS.length);
+  }
+
+  return (
+    <>
+      <button onClick={nextLight}>Next light</button>
+      <p>Light is: {light}</p>
+      <p>
+        You must
+        {light === "red" && <span>STOP</span>}
+        {light === "orange" && <span>SLOW DOWN</span>}
+        {light === "green" && <span>GO</span>}
+      </p>
+    </>
+  );
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  const TRAFFIC_LIGHTS = ["red", "orange", "green"];
+  let lightIndex = $state(0);
+
+  const light = $derived(TRAFFIC_LIGHTS[lightIndex]);
+
+  function nextLight() {
+    lightIndex = (lightIndex + 1) % TRAFFIC_LIGHTS.length;
+  }
+</script>
+
+<button onclick={nextLight}>Next light</button>
+<p>Light is: {light}</p>
+<p>
+  You must
+  {#if light === "red"}
+    <span>STOP</span>
+  {:else if light === "orange"}
+    <span>SLOW DOWN</span>
+  {:else if light === "green"}
+    <span>GO</span>
+  {/if}
+</p>
+```
+
+- React は `&&` や三項演算子（`? :`）で「JavaScript として」出し分けます
+- Svelte は **`{#if} / {:else if} / {:else}`** という、読んでそのままの書き方
+- → [`{#if}`：条件で表示する](/docs/svelte/if)
+
+### DOM 要素をつかむ（DOM ref）
+
+**React**
+
+```jsx
+import { useEffect, useRef } from "react";
+
+export default function InputFocused() {
+  const inputElement = useRef(null);
+
+  useEffect(() => inputElement.current.focus(), []);
+
+  return <input type="text" ref={inputElement} />;
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let inputElement;
+
+  $effect(() => {
+    inputElement.focus();
+  });
+</script>
+
+<input bind:this={inputElement} />
+```
+
+- React は `useRef` で「入れ物」を作り、`.current` から取り出します
+- Svelte は **`bind:this` で変数に直接入る**ので、`.current` は不要
+- → [bind：画面とデータをつなぐ](/docs/svelte/bind)
+
+## 3. Lifecycle：画面が出たとき・消えるとき
+
+**React**
+
+```jsx
+import { useEffect } from "react";
+
+export default function App() {
+  useEffect(() => {
+    console.log("画面に出た");
+
+    return () => {
+      console.log("画面から消える");
+    };
+  }, []);
+
+  return <p>Hello</p>;
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  import { onMount } from "svelte";
+
+  onMount(() => {
+    console.log("画面に出た");
+
+    return () => {
+      console.log("画面から消える");
+    };
+  });
+</script>
+
+<p>Hello</p>
+```
+
+- React の `useEffect(..., [])`（空の配列）＝「最初の1回だけ」
+- Svelte は **`onMount` という名前そのまま**の関数があります
+- 「値が変わるたびに動かしたい」なら、React は `useEffect(..., [値])`、Svelte は `$effect` の中でその値を読むだけ
+- → [$effect：変化に反応](/docs/svelte/effect)
+
+## 4. Component composition：部品を組み合わせる
+
+### 親から子へ渡す（Props）
+
+**React（親：App.jsx）**
+
+```jsx
+import UserProfile from "./UserProfile.jsx";
+
+export default function App() {
+  return (
+    <UserProfile
+      name="John"
+      age={20}
+      favouriteColors={["green", "blue", "red"]}
+      isAvailable
+    />
+  );
+}
+```
+
+**React（子：UserProfile.jsx）**
+
+```jsx
+export default function UserProfile({
+  name = "",
+  age = null,
+  favouriteColors = [],
+  isAvailable = false,
+}) {
+  return (
+    <>
+      <p>My name is {name}!</p>
+      <p>My age is {age}!</p>
+      <p>My favourite colors are {favouriteColors.join(", ")}!</p>
+      <p>I am {isAvailable ? "available" : "not available"}</p>
+    </>
+  );
+}
+```
+
+**Svelte 5（親：App.svelte）**
+
+```svelte
+<script>
+  import UserProfile from "./UserProfile.svelte";
+</script>
+
+<UserProfile
+  name="John"
+  age={20}
+  favouriteColors={["green", "blue", "red"]}
+  isAvailable
+/>
+```
+
+**Svelte 5（子：UserProfile.svelte）**
+
+```svelte
+<script>
+  let {
+    name = "",
+    age = null,
+    favouriteColors = [],
+    isAvailable = false
+  } = $props();
+</script>
+
+<p>My name is {name}!</p>
+<p>My age is {age}!</p>
+<p>My favourite colors are {favouriteColors.join(", ")}!</p>
+<p>I am {isAvailable ? "available" : "not available"}</p>
+```
+
+- **親側の書き方は、ほぼ同じ**です
+- 子側は、React は「関数の引数」、Svelte は **`$props()`** で受け取ります
+- どちらも `= ""` のように**初期値（デフォルト）**を書けます
+- → [props：親から子へ渡す荷物](/docs/svelte/props)
+
+### 子から親へ伝える（Emit to parent）
+
+**React（親）**
+
+```jsx
+import { useState } from "react";
+import AnswerButton from "./AnswerButton.jsx";
+
+export default function App() {
+  const [isHappy, setIsHappy] = useState(true);
+
+  function onAnswerNo() {
+    setIsHappy(false);
+  }
+
+  function onAnswerYes() {
+    setIsHappy(true);
+  }
+
+  return (
+    <>
+      <p>Are you happy?</p>
+      <AnswerButton onYes={onAnswerYes} onNo={onAnswerNo} />
+      <p style={{ fontSize: 50 }}>{isHappy ? "😀" : "😥"}</p>
+    </>
+  );
+}
+```
+
+**React（子：AnswerButton.jsx）**
+
+```jsx
+export default function AnswerButton({ onYes, onNo }) {
+  return (
+    <>
+      <button onClick={onYes}>YES</button>
+      <button onClick={onNo}>NO</button>
+    </>
+  );
+}
+```
+
+**Svelte 5（親）**
+
+```svelte
+<script>
+  import AnswerButton from "./AnswerButton.svelte";
+
+  let isHappy = $state(true);
+
+  function onAnswerNo() {
+    isHappy = false;
+  }
+
+  function onAnswerYes() {
+    isHappy = true;
+  }
+</script>
+
+<p>Are you happy?</p>
+<AnswerButton onYes={onAnswerYes} onNo={onAnswerNo} />
+<p style="font-size: 50px;">{isHappy ? "😀" : "😥"}</p>
+```
+
+**Svelte 5（子：AnswerButton.svelte）**
+
+```svelte
+<script>
+  let { onYes, onNo } = $props();
+</script>
+
+<button onclick={onYes}>YES</button>
+<button onclick={onNo}>NO</button>
+```
+
+- **どちらも「親が関数を渡して、子がそれを呼ぶ」**という同じ発想です
+- Svelte 5 からは React とほぼ同じ書き方になりました（古い Svelte 4 の `createEventDispatcher` は、もう使わなくてOK）
+- `style` は、React は**オブジェクト**（`fontSize: 50`）、Svelte は**ふつうの CSS 文字列**（`font-size: 50px`）
+
+### 子の中身を差し込む（Slot）
+
+**React（親）**
+
+```jsx
+import FunnyButton from "./FunnyButton.jsx";
+
+export default function App() {
+  return <FunnyButton>Click me!</FunnyButton>;
+}
+```
+
+**React（子：FunnyButton.jsx）**
+
+```jsx
+export default function FunnyButton({ children }) {
+  return (
+    <button style={{ background: "rgba(0, 0, 0, 0.4)", color: "#fff" }}>
+      {children}
+    </button>
+  );
+}
+```
+
+**Svelte 5（親）**
+
+```svelte
+<script>
+  import FunnyButton from "./FunnyButton.svelte";
+</script>
+
+<FunnyButton>Click me!</FunnyButton>
+```
+
+**Svelte 5（子：FunnyButton.svelte）**
+
+```svelte
+<script>
+  let { children } = $props();
+</script>
+
+<button style="background: rgba(0, 0, 0, 0.4); color: #fff;">
+  {@render children()}
+</button>
+```
+
+- 「タグの間に書いた中身」を、子が **`children`** という名前で受け取るのは同じ
+- 表示するとき、React は `{children}`、Svelte 5 は **`{@render children()}`**（「描いて」と頼む）
+- 中身が空だったときの予備（Slot fallback）は、Svelte なら `{#if children}...{:else}予備の文{/if}` で書けます
+
+### 遠い子孫へ渡す（Context）
+
+**React（親）**
+
+```jsx
+import { createContext, useContext, useState } from "react";
+
+const UserContext = createContext(null);
+
+export default function App() {
+  const [user, setUser] = useState({ username: "unicorn42" });
+
+  return (
+    <UserContext.Provider value={user}>
+      <UserProfile />
+    </UserContext.Provider>
+  );
+}
+
+function UserProfile() {
+  const user = useContext(UserContext);
+  return <p>Username: {user.username}</p>;
+}
+```
+
+**Svelte 5（親：App.svelte）**
+
+```svelte
+<script>
+  import { setContext } from "svelte";
+  import UserProfile from "./UserProfile.svelte";
+
+  const user = $state({ username: "unicorn42" });
+
+  setContext("user", user);
+</script>
+
+<UserProfile />
+```
+
+**Svelte 5（子：UserProfile.svelte）**
+
+```svelte
+<script>
+  import { getContext } from "svelte";
+
+  const user = getContext("user");
+</script>
+
+<p>Username: {user.username}</p>
+```
+
+- 「props で何段もバケツリレーしたくない」ときの道具です
+- React は `Provider` でツリーを**包む**、Svelte は `setContext` で**置いて**、`getContext` で**拾う**
+- 最初のうちは使わなくてOK。**props で困ってから**覚えれば十分です
+
+## 5. Form input：フォームの入力
+
+### テキスト入力（Input text）
+
+**React**
+
+```jsx
+import { useState } from "react";
+
+export default function InputHello() {
+  const [text, setText] = useState("Hello world");
+
+  function handleChange(event) {
+    setText(event.target.value);
+  }
+
+  return (
+    <>
+      <p>{text}</p>
+      <input value={text} onChange={handleChange} />
+    </>
+  );
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let text = $state("Hello World");
+</script>
+
+<p>{text}</p>
+<input bind:value={text} />
+```
+
+- React は「**表示（`value`）と更新（`onChange`）を別々に**」書きます
+- Svelte は **`bind:value` の1個で両方向**につながります
+- チェックボックスなら `bind:checked`、セレクトも `bind:value`
+- → [bind：画面とデータをつなぐ](/docs/svelte/bind)
+
+### チェックボックス（Checkbox）
+
+**React**
+
+```jsx
+import { useState } from "react";
+
+export default function IsAvailable() {
+  const [isAvailable, setIsAvailable] = useState(false);
+
+  return (
+    <>
+      <input
+        id="is-available"
+        type="checkbox"
+        checked={isAvailable}
+        onChange={(e) => setIsAvailable(e.target.checked)}
+      />
+      <label htmlFor="is-available">Is available</label>
+    </>
+  );
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  let isAvailable = $state(false);
+</script>
+
+<input id="is-available" type="checkbox" bind:checked={isAvailable} />
+<label for="is-available">Is available</label>
+```
+
+- React は `htmlFor` / `className` のように、**HTML と少し違う名前**を使います
+- Svelte は **HTML そのまま**（`for` / `class`）です
+
+## 6. Webapp features：データを取ってくる
+
+**React**
+
+```jsx
+import { useEffect, useState } from "react";
+
+export default function App() {
+  const [users, setUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("https://randomuser.me/api/?results=3")
+      .then((res) => res.json())
+      .then((json) => setUsers(json.results))
+      .catch((e) => setError(e))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  if (isLoading) return <p>Fetching users...</p>;
+  if (error) return <p>An error occurred while fetching users</p>;
+
+  return (
+    <ul>
+      {users.map((user) => (
+        <li key={user.login.uuid}>
+          {user.name.first} {user.name.last}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+**Svelte 5**
+
+```svelte
+<script>
+  import { onMount } from "svelte";
+
+  let users = $state([]);
+  let isLoading = $state(true);
+  let error = $state(null);
+
+  onMount(async () => {
+    try {
+      const res = await fetch("https://randomuser.me/api/?results=3");
+      const json = await res.json();
+      users = json.results;
+    } catch (e) {
+      error = e;
+    } finally {
+      isLoading = false;
+    }
+  });
+</script>
+
+{#if isLoading}
+  <p>Fetching users...</p>
+{:else if error}
+  <p>An error occurred while fetching users</p>
+{:else}
+  <ul>
+    {#each users as user (user.login.uuid)}
+      <li>{user.name.first} {user.name.last}</li>
+    {/each}
+  </ul>
+{/if}
+```
+
+- 「**読み込み中 / エラー / 成功**」の3状態を持つのは、どちらも同じ
+- Svelte は `{#if}` `{:else if}` で**上から順に読める**のが特徴
+- **SvelteKit なら、そもそも `onMount` で fetch しない**のが基本です。ページ表示前に [`load`](/docs/sveltekit/load) で取ってくるので、もっと短く書けます
+- 4状態UI（idle / loading / error / success）の実務パターンは [loading / error：4状態UI](/docs/patterns/loading-error) へ
+
+## 「考え方」の違いを3つだけ
+
+コードの見た目より大事な、**頭の中の違い**です。
+
+### 1. React は「関数を毎回やり直す」、Svelte は「変わった場所だけ直す」
+
+- React は、状態が変わると**コンポーネント関数をまるごと再実行**して、新しい画面と前の画面の差分を計算します。だから `useMemo` や `useCallback` で「やり直さなくていいよ」と教える必要が出てきます
+- Svelte は、**コンパイル時に「この変数はここに表示される」を調べておいて**、変わったところだけを直接書き換えます。だから「やり直さないで」の道具がほぼ要りません
+
+### 2. React は「JavaScript の中に HTML」、Svelte は「HTML の中に JavaScript」
+
+- React（JSX）は、`return (...)` の中に HTML っぽいものを書く。だから `className` や `htmlFor` のような**別名**が必要
+- Svelte は、**ふつうの HTML ファイルに `<script>` と `{}` を足した**ような形。`class` も `for` も HTML のまま
+
+### 3. React は「set 関数を呼ぶ」、Svelte は「代入する」
+
+- React：`setCount(count + 1)`
+- Svelte：`count++`
+
+これだけで、**フォームやリストのコードが目に見えて短く**なります。
+
+## よくある勘違い
+
+### Q. `onClick` と書いたら動かない！
+
+A. Svelte 5 は **`onclick`（全部小文字）**です。HTML の属性名そのままだと覚えてください。
+
+### Q. `useMemo` は Svelte の何？
+
+A. **`$derived`** です。「この値から計算した値を、元が変わったら作り直す」という役目は同じ。ただし Svelte の `$derived` は**軽い**ので、「重い計算のときだけ」と気にする必要はなく、**計算値なら全部 `$derived`** でOKです。
+
+### Q. `useRef` は Svelte の何？
+
+A. DOM 要素をつかむ用途なら **`bind:this`** です。「再描画しても消えない値の入れ物」という用途なら、Svelte は関数が再実行されないので、**ただの `let` 変数**で済みます。
+
+### Q. React のカスタムフック（`useXxx`）は Svelte だとどう書く？
+
+A. **`.svelte.ts` ファイルに、`$state` を使った関数（またはクラス）**を書きます。ファイル名に `.svelte` が入っていれば、コンポーネントの外でもルーン（`$state` など）が使えます。
+
+### Q. Next.js と SvelteKit は同じ関係？
+
+A. **はい、ほぼ同じ立ち位置**です。「部品を作る道具（React / Svelte）」と「サイト全体を作る道具箱（Next.js / SvelteKit）」のペア。くわしくは [Svelte と SvelteKit](/docs/intro/svelte-vs-sveltekit) へ。
+
+## 今日のまとめ
+
+- **Component Party** は、同じお題を React / Svelte などで横並びに見られる比較サイト
+- React の **`useXxx`** は、Svelte では **`$xxx`（ルーン）か、ただの代入**になる
+- **`useState` → `$state`、`useMemo` → `$derived`、`useEffect` → `$effect` / `onMount`**
+- **`.map()` → `{#each}`、`&&` → `{#if}`、`value + onChange` → `bind:value`**
+- 親から子への **props と、子から親へのコールバック**は、Svelte 5 と React でほぼ同じ形
+- 頭の中の違いは「**関数をやり直す（React） vs 変わった場所だけ直す（Svelte）**」
+
+## 今はここだけでOK
+
+> **「React で `useState` / `setXxx` と書いていたところは、Svelte では `$state` と `=` だけ。」**
+
+これだけ覚えておけば、Component Party の表はだいたい読めます。
+残りは、必要になったときにこのページの対応表に戻ってきてください。
+
+## 次に作る小さな練習
+
+- [Component Party](https://component-party.dev/) を開いて、上部で **React と Svelte 5 の2つだけ**を選ぶ
+- 「Reactivity」から順にスクロールして、**Svelte の方が何行短いか**を数えてみる
+- 「Event click」のカウンターを、自分の `src/routes/practice/+page.svelte` に**写して動かす**（[最初はどこに書く？](/docs/intro/where-to-write)）
+- そのカウンターに、`$derived` で「2倍の値」を足してみる（[$derived](/docs/svelte/derived)）
+- 余裕があれば、「Input text」の `bind:value` も足して、**入力した名前を上に表示**してみる（[bind](/docs/svelte/bind)）

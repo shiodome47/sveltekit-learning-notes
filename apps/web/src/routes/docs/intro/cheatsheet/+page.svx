@@ -22,6 +22,7 @@ category: はじめに
 | プロジェクトを作りたい | [プロジェクトを作る](/docs/intro/setup) |
 | どこにコードを書くかわからない | [最初はどこに書く？](/docs/intro/where-to-write) |
 | Svelte と SvelteKit の違いがわからない | [Svelte と SvelteKit](/docs/intro/svelte-vs-sveltekit) |
+| React を知っていて、Svelte だとどう書くか知りたい | [React と Svelte の比較](/docs/intro/react-vs-svelte) |
 | 最初の画面を作りたい | [`+page.svelte`](/docs/sveltekit/page) |
 | 変わる値を作りたい | [`$state`](/docs/svelte/state) |
 | 何か作ってみたい | [Todo アプリ](/docs/examples/todo)・[お知らせ一覧](/docs/examples/notice-board) |

@@ -31,14 +31,14 @@
 
 | セクション | 章数 | 内容 |
 | --- | --- | --- |
-| **はじめに** | 5 | プロジェクトの作り方・Svelte と SvelteKit の違い・最初の1ファイル・チートシート |
+| **はじめに** | 6 | プロジェクトの作り方・Svelte と SvelteKit の違い・React と Svelte の比較・最初の1ファイル・チートシート |
 | **Svelte 実践基本** | 8 | `$state` / `$derived` / `$effect` / `props` / `bind` / `{#if}` / `{#each}` / class・style |
 | **SvelteKit 実践基本** | 9 | `+page.svelte` / `+layout.svelte` / `[slug]` / `load` / `+page.server.ts` / `form actions` / `+server.ts` / `error / redirect` / `hooks` |
 | **TypeScript 実践基本** | 9 | 型は名札 / type vs interface / Union / Literal / optional / Utility Types / API レスポンス / Generics / 型ガード / Result 型 |
 | **実務パターン集** | 4 | 4状態UI・現在地メニュー下線・ダークモード・debounce 検索 |
 | **小さなアプリ例** | 8 | Todo（ローカル/localStorage/server）・お知らせ一覧・検索リスト・お知らせ管理画面・サーバー検索リスト・ログインフォーム |
 
-**合計 43 ページ + トップページ + 索引（チートシート）= 45 ページ**
+**合計 44 ページ + トップページ + 索引（チートシート）= 46 ページ**
 
 ## ⚠️ 注意：認証関連は学習用サンプル
 

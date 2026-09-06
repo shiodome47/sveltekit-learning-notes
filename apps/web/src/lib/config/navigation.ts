@@ -32,6 +32,10 @@ export const docsNavigation: DocItem[] = [
 				name: 'Svelte と SvelteKit'
 			},
 			{
+				slug: 'intro/react-vs-svelte',
+				name: 'React と Svelte の比較'
+			},
+			{
 				slug: 'intro/where-to-write',
 				name: '最初はどこに書く？'
 			},
