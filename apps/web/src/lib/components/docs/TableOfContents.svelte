@@ -391,7 +391,10 @@
 				}
 			}
 
-			activeId = current;
+			if (activeId !== current) {
+				activeId = current;
+				scrollActiveLinkIntoView(current);
+			}
 			const range: IndicatorRange | null =
 				visibleIds.length > 0
 					? {
@@ -439,6 +442,23 @@
 				pendingIndicatorFrame = null;
 			}
 		};
+	}
+
+	function scrollActiveLinkIntoView(id: string) {
+		const link = linkRefs.get(id);
+		if (!link) return;
+		const scroller = link.closest<HTMLElement>('[data-toc-scroll]');
+		if (!scroller || scroller.scrollHeight <= scroller.clientHeight) return;
+
+		const margin = 8;
+		const linkRect = link.getBoundingClientRect();
+		const scrollerRect = scroller.getBoundingClientRect();
+
+		if (linkRect.top < scrollerRect.top + margin) {
+			scroller.scrollTop -= scrollerRect.top + margin - linkRect.top;
+		} else if (linkRect.bottom > scrollerRect.bottom - margin) {
+			scroller.scrollTop += linkRect.bottom - (scrollerRect.bottom - margin);
+		}
 	}
 
 	function isLinkHighlighted(id: string) {

@@ -81,7 +81,7 @@
 </script>
 
 {#if hasActions}
-	<div class="mt-auto">
+	<div class="mt-auto shrink-0 pt-4">
 		<div class="flex flex-col gap-1 text-sm">
 			{#if canShowCopy}
 				<button

@@ -295,7 +295,7 @@
 		>
 			<div class="sticky top-8 flex h-full max-h-[calc(100dvh-4rem)] min-h-0 flex-col">
 				{#if showToc}
-					<div class="min-h-0 flex-1">
+					<div class="min-h-0 flex-1 overflow-y-auto pr-1" data-toc-scroll>
 						<TableOfContents
 							selector={tocSelector}
 							title={docsUiConfig.toc.title}
